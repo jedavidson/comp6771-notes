@@ -205,7 +205,6 @@ auto const mon = days::monday;
 ### Sequential containers
 
 These organise a finite set of objects into a strict linear arrangement:
-
 - `std::vector` is a dynamically-sized array, and the most common one to use
     - Initial capacity = #. of initial elements given
     - When the size of the vector reaches capacity, the capacity is doubled
@@ -225,7 +224,6 @@ Most operations on these are either $O(1)$ or amortised $O(1)$. In general, the 
 ### Ordered associative containers
 
 These provide fast key-based retrieval of data, but with an order on the elements:
-
 - `std::set` is a set in the mathematical sense
 - `std::multiset` is a multiset in the mathematical sense
 - `std::map` is a hash table
@@ -236,11 +234,24 @@ The ordering here is element sorted order, not insertion order. This is achieved
 ### Unordered associative containers
 
 These provide even faster key-based retrieval of data via hashing, at the cost of any guaranteed ordering of the elements:
-
 - `std::unordered_set`
 - `std::unordered_map`
 
 The average complexity of most operations on these are $O(1)$.
+
+### Container adapters
+
+These restrict the functionality of an existing container to provide a different set of functionalities:
+- `std::stack`
+- `std::queue`
+- `std::priority_queue`
+
+When declaring container adapters, the underlying sequence container can be specified. For example, by default `std::stack` will use a `std::deque` as its underlying representation.
+
+### Inserters and back inserters
+
+- `std::inserter(c, it)` returns an iterator that allows for the insertion of elements at the location of `it` in the container
+- `std::back_inserter(c)` returns an iterator that allows for the insertion of elements at the end of the container
 
 ### Asides
 
@@ -297,15 +308,27 @@ auto mid_it = std::next(container.begin(), std::distance(container.begin(), cont
 
 ### Types of iterators
 
-- Input iterator
-- Output iterator
-- Forward iterator
-- Bidirectional iterator
-- Random-access iterator
+- Input iterator: read-only iterator that can be incremented or compared for (in)equality
+- Output iterator: write-only iterator that can be incremented or compared for (in)equality
+- Forward iterator: like an input/output iterator but you can both read and write
+- Bidirectional iterator: like a forward iterator but you can decrement too
+- Random-access iterator: most general kind of iterator, which, in addition to all of the previously listed features, provides
+    - relational comparisons (e.g. `it1 < it2`)
+    - iterator arithmetic (e.g. `it1 + it2`)
+    - subscript access to values (e.g. `it[k]`, which is just `*(it + k)`)
 
-TODO: flesh these out
+In general read/write situations, we have forward iterators $\subset$ bidirectional iterators $\subset$ random-access iterators.
 
-### More miscellaneous boredom comments
+Different STL containers provide different iterator types:
+- `std::vector`, `std::deque` and `std::array` give random-access iterators
+- `std::list`, `std::(multi)set` and `std::(multi)map` give bidirectional iterators
+- `std::forward_list`, `std::unordered_(multi)set` and `std::unordered_(multi)map` give forward iterators
+
+Container adapters do not provide iterators.
+
+In C++20, there are also contiguous iterators, which are random iterators that guarantee contiguity of the underlying elements.
+
+### Asides
 
 When using a `const` iterator in a loop for example, you don't make the actual iterator variable `const` explicitly:
 ```cpp
@@ -351,12 +374,45 @@ std::for_each(begin, end, func);
 
 // This is reduce
 // Function takes accumulator, value as arguments (in that order)
-std::accumulate(begin, end, initial value, func);
-
-// For functional-esque tools, see <functional> header (similar to Python's operator, functools)
+std::accumulate(begin, end, initial_value, func);
 ```
 
-TODO: more stuff
+For functional-esque tools, see the `<functional>` header (similar to Python's operator, functools).
+
+### Lambda functions
+
+To specify an unnamed function, we can do
+```cpp
+[capture] (args) -> ret_type {
+    body
+}
+```
+
+The capture part is necessary because, by default, the lambda does not get access to its surrounding scope. Things you want to explicitly add to the scope of the lambda should be given in a comma-separated list inside the square brackets.
+
+
+A (by default `const`) copy of each captured variable is made, with value initialised to that of the variable in the outer scope at the point at which the lambda is defined:
+```cpp
+auto n = 6771;
+auto f = [n] (int x) -> int {
+    return x + n;
+};
+n++;
+f(1); // still gives 6772 even though n has changed after defining the lambda
+```
+
+To make the local copies of captured variables mutable, we can add `mutable` after the parameter list:
+```cpp
+[capture] (args) mutable -> ret_type {
+    body
+}
+```
+
+To mutate the thing being captured by the lambda after it has executed, we can capture by reference: `[&var]`.
+
+### Asides
+
+Lambdas are actually anonymous *functors*. A more critical difference from functions is that functors can have state (e.g. the capture in this example).
 
 ---
 
