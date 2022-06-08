@@ -196,28 +196,169 @@ enum class days {
 auto const mon = days::monday;
 ```
 
-### Miscellaneous boredom comments
+---
+
+## STL Containers
+
+(STL = Standard Template Library)
+
+### Sequential containers
+
+These organise a finite set of objects into a strict linear arrangement:
+
+- `std::vector` is a dynamically-sized array, and the most common one to use
+    - Initial capacity = #. of initial elements given
+    - When the size of the vector reaches capacity, the capacity is doubled
+    - Does not automatically shrink capacity; use `shrink_to_fit()` to do that
+    - Provides two ways to access items:
+        - `v.at[i]` does bounds checking, which is more expensive but safer
+        - `v[i]` doesn't do bounds checking, which is lightweight but can lead to UB
+- `std::array` is a more lightweight wrapper for a C-style fixed size array
+    - Crucially, while `std::vector` places its memory in the heap, the underlying array in an `std::array` lives in the stack, which can save some system calls
+    - The sheer flexibility of `std::vector` means you probably want to use that most of the time unless a specific enough situation occurs for `std::array` to be suitable
+- `std::deque` is a double-ended queue
+- `std::forward_list` is a singly-linked list
+- `std::list` is a doubly-linked list
+
+Most operations on these are either $O(1)$ or amortised $O(1)$. In general, the performance of the last 3 is hindered by cache locality concerns.
+
+### Ordered associative containers
+
+These provide fast key-based retrieval of data, but with an order on the elements:
+
+- `std::set` is a set in the mathematical sense
+- `std::multiset` is a multiset in the mathematical sense
+- `std::map` is a hash table
+- `std::multimap` is a hash table with non-unique keys
+
+The ordering here is element sorted order, not insertion order. This is achieved by storing them as a sorted tree, which gives most operations on them costs of $O(\log{n})$.
+
+### Unordered associative containers
+
+These provide even faster key-based retrieval of data via hashing, at the cost of any guaranteed ordering of the elements:
+
+- `std::unordered_set`
+- `std::unordered_map`
+
+The average complexity of most operations on these are $O(1)$.
+
+### Asides
 
 For certain data structures, there is an `emplace` and a `push/insert/...` function. The difference is that `emplace` constructs an object in-place without using copies or moves by some forwarding magic.
 ```cpp
 auto x = std::stack<MyObj>{};
 x.push(MyObj(1, 2, 3)); // creates a temporary copy of the object, then moves it into the stack
-x.emplace(1, 2, 3); // forwards the arguments to the MyObj constructor to create it in the stack in-place
+x.emplace(1, 2, 3);     // forwards the arguments to the MyObj constructor to create it in the stack in-place
 ```
 
 This can often be a faster way of doing it as you avoid moves/copies.
 
-## STL Containers
-
-TODO: Summarise Hayden lectures
+---
 
 ## STL Iterators
 
-TODO: Summarise Hayden lectures
+An abstract interface for moving through the items in a container. The implementation of the iterator is defined by whoever is writing that iterator.
+
+### Creating iterators
+
+```cpp
+container.begin();   // mutable iterator from the start of the container
+container.cbegin();  // immutable iterator from the start of the container
+container.rbegin();  // mutable reverse iterator from the end of the container
+container.crbegin(); // immutable reverse iterator from the end of the container
+
+container.end();     // mutable iterator one past the end of the container
+container.cend();    // immutable iterator one past the end of the container
+container.rend();    // mutable reverse iterator one before the start of the container
+container.crend();   // immutable reverse iterator one before the start of the container
+```
+
+### Interacting with iterators
+
+Iterators behave a lot like pointers and not references, so you need to use `*` to actually get the item that the iterator is pointing to at any particular time. Dereferencing an `end` iterator is undefined behaviour.
+
+There are two functions for advancing iterators non-linearly (i.e. besides doing `++`):
+- `std::advance(it, n)` will advance the iterator `n` steps
+- `std::next(it, n)` will create a copy of the iterator advanced `n` steps
+
+In situations where the length of the underlying container may not be known/stored, there is a way to calculate the "distance" between two iterators:
+```cpp
+std::distance(it1, it2);
+```
+
+While it makes it a bit more verbose, this approach is useful in certain situations where you may not have a *random-access iterator*. For example, taking the midpoint of two iterators:
+```cpp
+// Only works if the iterator given back is random-access
+auto mid_it_ra = (container.begin() + container.end()) / 2;
+
+// Works regardless, though it is a bit longer
+auto mid_it = std::next(container.begin(), std::distance(container.begin(), container.end()) / 2);
+```
+
+### Types of iterators
+
+- Input iterator
+- Output iterator
+- Forward iterator
+- Bidirectional iterator
+- Random-access iterator
+
+TODO: flesh these out
+
+### More miscellaneous boredom comments
+
+When using a `const` iterator in a loop for example, you don't make the actual iterator variable `const` explicitly:
+```cpp
+for (auto const it = c.begin(); it != c.end(); ++it) {
+    // Doesn't work, needs to be auto it = ...
+}
+```
+
+When working with something like a `map`, if you want to look up whether an item is in the map and then use that item if it does exist, it is often quicker to work with the `.find()` method, which will give back an iterator:
+```cpp
+// Iterator method: one lookup and can access the item at that key via the iterator
+// Note: the iterator is to a key-value std::pair
+auto it = map.find(key);
+if (it != map.end()) {
+    auto v = *iter.second;
+}
+
+// C++20 way of doing it via .contains() and .at(): two lookups
+if (map.contains(key)) {
+    auto v = map.at(key);
+}
+```
+
+---
 
 ## STL Algorithms
 
-TODO: Summarise Hayden lectures
+The `<algorithm>` library gives some nice standardised functions for common tasks to cut down on boilerplate code that the programmer has to write.
+
+These algorithms work on iterators to containers rather than containers directly so as to be most portable with different containers.
+
+### Map and reduce equivalents
+
+```cpp
+// This is map, which places the mapped contents into a destination container
+// It is up to the programmer to make sure that destination container is big enough
+std::transform(src_begin, src_end, dest_begin, func);
+
+// This is basically non-returning map
+// The func should be void, because its return type is ignored
+// To mutate, make sure func takes references in the argument, and change via assignment
+std::for_each(begin, end, func);
+
+// This is reduce
+// Function takes accumulator, value as arguments (in that order)
+std::accumulate(begin, end, initial value, func);
+
+// For functional-esque tools, see <functional> header (similar to Python's operator, functools)
+```
+
+TODO: more stuff
+
+---
 
 ## Class Types
 
