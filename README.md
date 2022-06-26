@@ -418,6 +418,281 @@ Lambdas are actually anonymous *functors*. A more critical difference from funct
 
 ## Class Types
 
+### Construction
+
+```cpp
+// Default construction: calls the no-arg constructor
+std::vector<int> v11;
+auto v12 = std::vector<int>{};
+auto v13 = std::vector<int>();
+
+// Copy constructors
+auto v2 = std::vector<int>{v11.begin(), v11.end()}; // == a copy of v1
+auto v3 = std::vector<int>{v2};                     // == a copy of v2
+
+// Initialiser list constructor
+auto v4 = std::vector<int>{5, 2}; // == [5, 2]
+
+// Count + value constructor
+auto v5 = std::vector<int>(5, 2); // == [2, 2, 2, 2, 2]
+```
+
+Use braces to construct things unless it's necessary to use parens. This is called *uniform initialisation*.
+
+### Namespaces
+
+Namespaces allow us to group things that belong together. They're also used to prevent similarly-named things from clashing.
+
+```cpp
+namespace my_namespace {
+    auto x = 6771;
+} // namespace my_namespace
+
+// refer to this in later code as my_namespace::x;
+```
+
+Can be nested, but we prefer top-level namespaces to multi-tier.
+
+```cpp
+namespace x {
+    namespace y {
+        auto z = 6771;
+    } // namespace y
+} // namespace x
+
+// refer to this in later code as x::y::z
+
+// or we could do the following
+namespace x::y {
+    auto z = 6771;
+} // namespace x::y
+```
+
+Can have anon namespaces, to simulate the effect of static functions. These are local to the file in which they are defined.
+
+```cpp
+namespace {
+    auto z = 6771;
+} // namespace
+```
+
+Can give them new names, e.g. `namespace chrono = std::chrono`.
+
+We always fully-qualify things to avoid counterintuitive behaviour with overloading resolution.
+
+### OOP
+
+```cpp
+class foo {
+// memebrs accessible by everyone
+public:
+    foo();
+
+// members accessible by members, friends and subclasses
+protected:
+    int x;
+
+// members accessible by members and friends
+private:
+    int y;
+    void z();
+
+// can have multiple sections of the same name
+public:
+    int w;
+}
+```
+
+By default, members of a class are *private*. The only difference between a struct and a class is that all members of a struct are public by default. We will almost always use classes over structs unless we essentially just want a data class with complete access.
+
+There is a notion of `this`, which in a method call is always a pointer to the class object which called it. However we prefer to just suffix private/internal members with an underscore.
+
+### Class scope
+
+It's common to declare a class with its method signatures in a header file, then implement those methods in another file. However, the implementation must scope the class when writing those implementations:
+
+```cpp
+// in Foo.h
+class Foo {
+public:
+    Foo();
+    ~Foo();
+    void f();
+}
+```
+```cpp
+// in Foo.cpp
+#include "Foo.h"
+
+Foo::Foo() {
+    // ...
+}
+
+Foo::~Foo() {
+    // ...
+}
+
+void Foo::f() {
+    // ...
+}
+```
+
+### Constructors
+
+Constructors may specify an *initialiser list*, which gives values to data members in order of their member declaration in the class itself. Crucially, this happens *before* the constructor body is actually executed.
+
+```cpp
+class MyClass {
+public:
+    MyClass(int i, std::vector<int> j) : i_{i}, j_{j} {} // e.g. MyClass{1, std::vector<int>{1, 2}};
+private:
+    int i_;
+    std::vector<int> j_;
+}
+```
+
+When initialising an object, the following order is used:
+```
+for each data member in declaration order
+    if it has a used definition initialiser
+        initialise it using the used defined initialiser
+    else if it is of a built-in type
+        do nothing (leave it as whatever)
+    else
+        initialise it using its default constructor
+```
+
+In other words, initialisation happens for all data members before the body is called, making so-called uniform initialisation more efficient than setting things in the constructor body (since those values are initialised first anyway, perhaps just to default values). You may as well use an initialiser list to just make those initial values meaningful.
+
+### Delegating constructors
+
+Constructors can call other constructors, possibly to set default values:
+
+```cpp
+class MyClass {
+public:
+    MyClass(int i, std::vector<int> j) : i_{i}, j_{j} {}
+    MyClass(std::vector<int> j) : MyClass(6771, j) {}; // e.g. MyClass(std::vector<int>{1, 2});
+private:
+    int i_;
+    std::vector<int> j_;
+}
+```
+
+### Destructors
+
+Methods that are called when an object goes out of scope, which can be useful for cleaning up used resources (e.g. any pointers, opened files, locks, ...). They should not throw exceptions.
+
+```cpp
+class MyClass {
+    ~MyClass() noexcept;
+}
+
+MyClass::~MyClass() noexcept {
+    // do destruction
+}
+```
+
+### Explicit initialisation
+
+By default, unary constructors can do implicit type conversion from the parameter to the class:
+```cpp
+class Age {
+public:
+    Age(int age): age_{age} {}
+private:
+    int age_;
+}
+
+// explicit construction
+Age a1{12};
+auto a2 = age{12};
+
+// implicit construction
+Age a = 12;
+```
+
+Sometimes you want this, other times you don't, because implicit type conversions are generally not liked. To prevent this and force people to do the explicit way, use the `explicit` keyword:
+```cpp
+class Age {
+public:
+    explicit Age(int age): age_{age} {}
+private:
+    int age_;
+}
+
+// explicit construction still works
+Age a1{12};
+auto a2 = age{12};
+
+// implicit construction now no longer works
+// Age a = 12;
+```
+
+### `const` objects and member functions
+
+By default, member functions are only callable by non-`const` objects. Only member functions marked with `const` at the end of the function may be called on `const` objects:
+
+```cpp
+class Person {
+public:
+    person(std::string const& name) : name_{name} {}
+
+    // only callable by non-const Person objects
+    auto set_name(std::string const& name) -> void {
+        name_ = name;
+    }
+
+    // callable by all objects
+    // it is a compiler error to modify members in such a function that are not
+    // declared as mutable; it's rare to want to ever make members mutable,
+    // but they do have their use cases sometimes (e.g. a cache)
+    auto get_name() const -> std::string const& {
+        return name_;
+    }
+private:
+    mutable int age;
+    std::string name_;
+}
+```
+
+### Static data members and member functions
+
+Belong to every instance of a class:
+
+```cpp
+class MyClass {
+public:
+    static std::string const x;
+    static void f();
+}
+
+// member function may be called as MyClass::f()
+```
+
+Static data members in general can't be initialised in the class itself, but must be done elsewhere:
+```cpp
+auto MyClass::x = "abcd";
+```
+
+### Special member functions, `default` and `delete`
+
+By default, the compiler will *synthesise* or create some *special member functions* for you. Two examples are
+- If no constructors are given, then a default no-arg constructor will be created for you.
+- A copy constructor that allows one to construct an object as a copy of an existing one.
+
+To signal to the compiler that you do want its synthesised constructors (e.g. the default constructor), use the keyword `default`. To signal to the compiler that you *don't* want one of its synthesised constructors (e.g. the copy constructor), use the `delete` keyword.
+```cpp
+class MyClass {
+public:
+    MyClass() = default; // generates the default constructor
+    MyClass(int i) i_{i} {}
+    MyClass(MyClass const& mc) = delete; // don't generate the copy constructor
+private:
+    int i_;
+}
+```
+
 ## Operator Overloading
 
 ## Exceptions
