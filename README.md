@@ -693,11 +693,208 @@ private:
 }
 ```
 
+---
+
 ## Operator Overloading
+
+In C++, all operators (like `<`, `==`, `[]`) are functions and can be overloaded to work with custom classes. Each operator is prefixed by the word `operator` (e.g. the `==` operator is `operator==` as a function). In general, however, it only makes sense to create an overload for an operator of some type if, when used with that type, it has a single, obvious meaning.
+
+|**Type**|**Operator(s)**|**Member or friend?**|
+|---|---|---|
+|I/O|`>>`, `<<`|Friend|
+|Arithmetic|`+`, `-`, `*`, `/`|Friend|
+|Comparison|`>`, `<`, `>=`, `<=`, `==`, `!=`|Friend|
+|Assignment|`=`|Member (non-`const`)|
+|Compound assignment|`+=`, `-=`, `*=`, `/=`|Member (non-`const`)|
+|Subscript|`[]`|Member (`const` and non-`const`)|
+|Increment/decrement|`++`, `--`|Member (non-`const`)|
+|Dereference|`->`, `*`|Member (non-`const`)|
+|Function call|`()`|Member|
+
+### Friendship
+
+Making a non-member function a friend of a class allows it to access otherwise private internal member fields. This obviously breaks abstraction and should be avoided wherever possible, but it does have its uses:
+- Operator overloading
+- Allowing member functions of related classes (e.g. iterators) to access class internals
+
+---
 
 ## Exceptions
 
+Exceptions are a runtime mechanism for signifying exceptional circumstances during code exectution. Exception handling is the process of managing exceptions that are raised rather than causing the program to crash.
+
+### Exception objects
+
+All C++ exceptions are objects which inherit from `std::exception`. As such, we
+- throw exceptions by value
+- catch exceptions by `const` reference
+
+### Exception control flow
+
+```cpp
+try {
+    // some code
+} catch (exception1_t const& e1) {
+    // some logging
+} catch (exception2_t const& e2) {
+    // some more logging
+} catch (...) {
+    // logging for any exception other than the previous 2
+}
+```
+
+### Rethrow
+
+```cpp
+try {
+    try {
+        // some code
+    } catch (exception_t const& e) {
+        // some logging
+
+        // exception is rethrown for handling by the next try/catch layer
+        throw e;
+    }
+} catch (exception_t const& e) {
+    // some further logging
+}
+```
+
+### No-throw exception safety (failure transparency)
+
+An operation that is guaranteed to never throw an unhandled exception provides no-throw exception safety. While exceptions may occur, they are handled internally. Some examples of such operations:
+- Closing files
+- Freeing memory
+- Move constructors and move assignments
+- Trivial stack object creation
+
+### Strong exception safety (commit or rollback)
+
+An operation that may fail, but without leaving visible effects (e.g. no modifications to the object's state) provides strong exception safety. This is the most common type of exception safety offered by C++ functions.
+
+To achieve this, first perform all throwing operations that don't modify internal state before doing irreversible, non-throwing operations.
+
+### Basic exception safety (no-leak guarantee)
+
+An operation that may fail and cause side effects, but
+- respects class invariants
+- does not leak resources
+- corrupt data
+on exception provides basic exception safety. Objects are afterward left in a valid but unspecified state, as there is no telling the extent to which the side effects of partial execution have modified things.
+
+### No exception safety
+
+Operations that make no guarantees regarding exceptions provide no exception safety. This is often bad C++ code and should be avoided at all costs (especially since wrapping resources and attaching lifetimes to them can give at least basic exception safety).
+
+
+### `noexcept`
+
+Functions marked as `noexcept` are understood to not throw unhandled exceptions (but doesn't prevent them from doing so). STL functions can operate more efficiently on `noexcept` functions.
+
 ## Resource Management
+
+### Long lifetimes
+
+There are three ways to make an object's lifetime outlive that of its defining scope:
+- Returning out from a function via copy
+- Returning out from a function via reference
+    - The object itself must always outlive the reference, so references to local function variables can result in undefined behaviour!
+- Returning out from a function as a heap resource
+
+### Heap allocation via `new` and `delete`
+
+In C++, the equivalents of `malloc` and `free` are `new` and `delete`. These call the constructors/destructors of a class to create/delete instances of that class.
+
+```cpp
+int* i = new int{6771};
+delete i;
+
+std::vector<int>* v = new std::vector<int>{1, 2, 3};
+delete v;
+
+int *l = new int[123];
+delete[] l; // calls destructor on each elem first before deallocing the array
+```
+
+Since the heap is global unlike local function stacks, this means they outlive their defining scopes.
+
+### Destructors
+
+When a non-reference object goes out of scope, the destructor of that object is called, which frees any underlying heap resources that may be under its control. Examples of where this might be useful are
+- freeing pointers
+- closing open files
+- releasing locks
+
+
+### Rule of 5/0
+
+When thinking about resource management for a class, there are 5 operations to keep in mind:
+- Destructor
+- Copy constructor and copy assignment
+- Move constructor and move assignment
+
+The *rule of 5* states that if a class defines custom implementations any of the 5 listed operations, then it should also provide custom implementations of the other 4. (Prior to C++11, this was the rule of 3, since copy/move assignment didn't exist then.)
+
+The *rule of 0* states that a class requiring managed resources should either
+- take full responsibility its resources by declaring and implementing all 5 operations
+- declare none of these operations and rely on the default implementations by instead using types that *do* internally manage each resource (through their own implementations of the 5 operations).
+
+
+```cpp
+class cstring {
+public:
+    // rule of 5: cstring takes full responsibility over its resources
+    ~cstring() { delete[] p; }
+    cstring(cstring const&);
+    cstring(cstring&&);
+    cstring operator=(cstring const&);
+    cstring operator=(cstring&&);
+private:
+    int* p;
+}
+
+class person {
+    // rule of 0: none of the 5 operations are declared and are implicitly defaulted
+    // (this is now effectively just a data class)
+    cstring name;
+    int age;
+}
+```
+
+### Custom copy constructors
+
+Because the default behaviour of a copy constructor is to perform member-wise shallow copies of data members, any pointer resources (e.g. heap arrays) will refer to the same object in both object copies (i.e. changes in one object to this data member reflect in the other). Even worse, during destruction, such resources will be double-freed. So, when writing a copy constructor, make sure to do deep copies:
+
+```cpp
+my_vec::operator=(my_vec const& mv)
+: data_{new int[mv.size_]}
+, size_{mv.size_}
+{
+    std::copy(mv.data_, mv.data_ + mv.size_, data_);
+}
+```
+
+### Custom copy assignment operators
+
+The copy-and-swap idiom is most useful for implementing copy assignment correctly:
+
+```cpp
+my_vec::my_vec(mv_vec const& mv) {
+    // use the copy constructor to create a copy of the object,
+    // then swap out its internals with this object
+    my_vec(mv).swap(*this);
+    return *this;
+}
+
+void my_vec::swap(my_vec& mv) {
+    std::swap(data_, mv.data_);
+    std::swap(size_, mv.size_);
+}
+```
+
+### lvalues and rvalues
+
+TODO
 
 ## Smart pointers
 
