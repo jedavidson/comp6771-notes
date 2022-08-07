@@ -1039,6 +1039,213 @@ So, as a general rule of thumb, it is better to manage several wrappers around i
 
 ## Templates
 
+Polymorphism is the provision of a single interface to entities of different types. Templates are a form of static polymorphism in C++.
+
+### Function templates
+
+A function template is a prescription for the compiler to generate particular instances of a function varying by type. The emphasis here is on the compiler's role, unlike other languages that handle this kind of polymorphism at runtime. The process of generating these instances is called *template instantiation*.
+
+```cpp
+// T is a template type parameter
+// the thing inside the <> is called a template parameter list
+template<typename T>
+auto min(T a, T b) -> T {
+    return a < b ? a : b;
+}
+
+// because we are calling this templated function with T = int and T = double,
+// the compiler will generate instances of the function min for these two types
+// in the sense that there are two separate implementations present:
+min(1, 2);     // auto min(int a, int b) -> int
+min(0.9, 2.3); // auto min(double a, double b) -> double
+
+// note the use of template argument deduction (?)
+```
+
+While this does slow down compilation and makes binaries larger, it is often advantageous to do this work upfront before runtime as it improves performance once the code is actually run, as there are less runtime checks incurred.
+
+### Template specialisation
+
+If we still wish to use a function using a single interface, but vary the behaviour slightly depending on the type, we can specialise the behaviour of that templated function.
+
+```cpp
+template<typename T>
+auto f(T a) -> T {
+    return a;
+}
+
+// template specialisation of f, providing a custom behaviour for T = int
+// the empty template paramteter list indicates that this is a templated function
+// with some compilers it may be omitted but it's good to keep it in anyway
+template<>
+auto f(int a) -> int {
+    return a + 1;
+}
+```
+
+### Type and non-type parameters
+
+A template type parameter has unknown type and no value. A non-type parameter has known type with unknown value.
+
+An example of how this might be useful is writing a generic procedure to find the minimum element of a `std::array`. These have fixed size which is specified as a template parameter, so we cannot simply parameterise the function over its element type.
+
+```cpp
+template <typename T, std::size_t sz>
+auto min_elem(std::array<T, sz> const a) -> T {
+    // find the smallest element in a and return it
+}
+
+// compiler deduces what T and sz should be from a
+```
+
+### Class templates
+
+We can do similar things for classes as well, creating *class templates*.
+
+```cpp
+template <typename T>
+class X {
+    T foo_;
+
+public:
+    X(T foo) : foo_{foo} {}
+
+    auto get_foo() -> T {
+        return foo_;
+    }
+
+    auto set_foo(T foo) -> void {
+    }
+};
+
+// use like this
+auto x1 = X<int>{1};
+auto x2 = X<std::string>{"hi"};
+```
+
+The implementation of member functions doesn't necessarily need to be inside the class definition:
+
+```cpp
+template <typename T>
+class X {
+    T foo_;
+
+public:
+    X(T foo) : foo_{foo} {}
+
+    auto get_foo() -> T;
+    auto set_foo(T foo) -> void;
+};
+
+template <typename T>
+auto X<T>::get_foo() -> T {
+    return foo_;
+}
+
+template <typename T>
+auto X<T>::set_foo(T foo) -> void {
+    foo_ = foo;
+}
+```
+
+You can do template specialisation on classes as well:
+
+```cpp
+template <>
+class X<int> {
+    // we can change the internal data members of the class just fine
+    // in fact, this might be a primary driver for wanting to specialise
+    // the template in the first place
+    int foo_;
+    int bar_;
+
+public:
+    X(int foo) : foo_{foo}, bar_{-foo} {}
+
+    auto get_foo() -> int {
+        return foo_;
+    }
+
+    auto set_foo(int foo) -> void {
+        if (foo != bar_) {
+            foo_ = foo;
+        }
+    }
+
+    // we could add more functions here to the public interface, but it's generally
+    // a good idea to not, so that they're easier to use transparently as a user
+};
+```
+
+### Inclusion compilation model
+
+Templated functions/classes must be defined in header files, because template definitions have to be known at compile time. This is in contrast to the usual link-time instantiation we use when writing non-polymorphic code that can separate the interface and implementation freely.
+
+This can cause problems though, since it technically exposes implementation details in the interface, but also because it might make compilation a bit slower.
+
+If in the above example the `set_foo` member function was never used, then no code is actually generated for that member function. This is called *lazy instantiation.* The same is not true for non-templated classes (i.e. if a class is non-templated and has member functions which are technically not used by anything, they are still generated anyhow).
+
+### Static members and friends of templated classes
+
+Each template instantiation of a class has its own set of static members, as well as friend functions.
+
+```cpp
+template <typename T>
+class X {
+    T foo_;
+
+    // each X<T>, X<U>, X<V> instantiation has its own bar_ member
+    static int bar_;
+
+public:
+    X(T foo) : foo_{foo} {}
+
+    auto get_foo() -> T {
+        return foo_;
+    }
+
+    auto set_foo(T foo) -> void {
+    }
+
+    // each X<T>, X<U>, X<V> instantiation has its own operator<< friend
+    friend auto operator<<(std::ostream& os, X const& x) -> std::ostream& {
+        // ...
+    }
+};
+```
+
+---
+
+## Constant expressions
+
+A `constexpr` is a variable that can be calculated at compile time (a la `#define`s in C), or a function that, if its inputs are known, can be run at compile time (and its result substituted in place of that function call).
+
+```cpp
+constexpr int fact_ce(int n) {
+    return n <= 1 ? 1 : n * fact_ce(n - 1);
+}
+
+int fact(int n) {
+    return n <= 1 ? 1 : n * fact(n - 1);
+}
+
+// can easily be calculated at compile time
+constexpr int n = 10 + 20;
+
+// function call is evaluated at compile time
+// the omission of the constexpr keyword here means that the compiler is allowed
+// to turn this into a constant expression if it wants to, but doesn't have to
+// OTOH if we did specify it as a constexpr int n_fact_ce, it must
+int n_fact_ce = fact_ce(10);
+
+// not evaluated at compile time
+int n_fact = fact(10);
+```
+
+This has two benefits, where applicable:
+- We are offloading runtime computation to compile-time computation => faster programs
+- Potential errors can be flagged at compile-time rather than at runtime, making them easier to pick up on
+
 ---
 
 ## Custom Iterators
