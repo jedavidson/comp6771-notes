@@ -1064,25 +1064,6 @@ min(0.9, 2.3); // auto min(double a, double b) -> double
 
 While this does slow down compilation and makes binaries larger, it is often advantageous to do this work upfront before runtime as it improves performance once the code is actually run, as there are less runtime checks incurred.
 
-### Template specialisation
-
-If we still wish to use a function using a single interface, but vary the behaviour slightly depending on the type, we can specialise the behaviour of that templated function.
-
-```cpp
-template<typename T>
-auto f(T a) -> T {
-    return a;
-}
-
-// template specialisation of f, providing a custom behaviour for T = int
-// the empty template paramteter list indicates that this is a templated function
-// with some compilers it may be omitted but it's good to keep it in anyway
-template<>
-auto f(int a) -> int {
-    return a + 1;
-}
-```
-
 ### Type and non-type parameters
 
 A template type parameter has unknown type and no value. A non-type parameter has known type with unknown value.
@@ -1250,9 +1231,334 @@ This has two benefits, where applicable:
 
 ## Custom Iterators
 
----
+### Iterator invalidation
+
+When we modify a container, this may affect iterators to that container. For example, if we are continually moving the endpoint of a container by inserting/deleting elements from it, it is likely not the case that an old `end()` iterator is valid anymore. This is the concept of *iterator invalidation*: some operations may render existing iterators invalid, such that continued use of these iterators is now undefined behaviour.
+
+Which operations do and don't invalidate iterators should be specified by the operations of the container. Some operations on some containers may only invalid some iterators (e.g. it might only invalidate the past-the-end `end()` iterator).
+
+### Iterator traits
+
+Each iterator has certain properties:
+- Category: is it an input/output, forward, bidirectional or random-access iterator?
+- Value type: what is the type of the element that the iterator points to?
+- Reference type: what is the type of references to elements that the iterator points to?
+- Pointer type: what is the type of pointers to elements that the iterator points to?
+- Difference type: what is the type that results upon subtraction of iterators?
+
+### Building iterators
+
+An iterator, at minimum, must look like this:
+
+```cpp
+#include <iterator>
+
+template <typename T>
+class my_iterator {
+public:
+    using iterator_category = std::forward_iterator_tag; // or some other iterator category
+    using value_type = T;
+    using reference = T&;
+    using pointer = T*;
+    using difference_type = int;
+
+    my_iterator& operator++();
+    my_iterator operator++(int) {
+        auto copy{*this};
+        ++(*this);
+        return copy;
+    }
+
+    reference operator*() const;
+
+    // not strictly required, but it's nice to have
+    pointer operator->() const {
+        return &(operator*());
+    }
+
+    // in C++20, operator!= is automatically derived for you from operator==
+    friend bool operator==(const my_iterator& lhs, const my_iterator& rhs) {
+        // ...
+    }
+};
+```
+
+For bidirectional iterators, one also needs to provide prefix and postfix `operator--`.
+
+To allow a custom container to be used with STL functions that accept iterators, all one needs to do is provide implementations of `begin()`, `end()`, `cbegin()` and `cend()`. Within the container, one should also specify some iterator types:
+```cpp
+using iterator = // your iterator type here
+using const_iterator = // your const iterator type here
+```
+
+If you have a bidirectional iterator already, you can get reverse iterators for free by using the `reverse_iterator` and `const_reverse_iterator` iterator adaptors.
 
 ## Advanced Templates
+
+### Default members
+
+We can set defaults for template type parameters:
+
+```c++
+// if cont_t is not actually specified when invoking an instance of this templated class,
+// then its default value will be std::vector<T>
+template <typename T, typename cont_t = std::vector<T>>
+class stack {
+public:
+    // interface here ...
+private:
+    cont_t stack_;
+};
+```
+
+Now when instantiating `stack`, one can give just the element type and fall back on a container type of `std::vector` if that fits the use case.
+
+An example of this being done in practice is `std::vector`, which can take a second type parameter for a custom element allocator. Since it is uncommon to want to do this, it has a sane default template type parameter set in this case.
+
+All template parameter lists (e.g. in member function definitions placed outside of the class declaration) have to be updated to conform as well if a template parameter is given a default value:
+```cpp
+template <typename T, typename U = int>
+class X {
+public:
+    auto f() -> T;
+    auto g() -> T;
+};
+
+template <typename T, typename U>
+auto X::f() -> T {
+    // ...
+}
+
+template <typename T, typename U>
+auto X::g() -> T {
+    // ...
+}
+
+```
+
+Template type parameters with defaults have to be placed at the end of the template parameter list, so it is not valid to start a template like
+```cpp
+template <typename X, typename Y = int, typename Z>
+```
+
+### Specialisation
+
+If we want to give a more specific implementation of a templated type, we can use *specialisation* in two ways:
+- *Partial specialisation* for a template for a type "based on" a template type parameter (e.g. a specialisation of a template for `T*` or `std::vector<T>`)
+- *Explicit specialisation* for a fully-realised type (e.g. `std::string`, `int`)
+
+Specialising a template is a good idea if
+- You need to preserve the existing semantics of a template for something that wouldn't otherwise work with the default generic implementation
+    - Specialising to give completely different semantics/break assumptions about the behaviour of a class to other realised type parameters is poor form
+- You're writing a type trait
+- There is an optimisation to be had with specialisation (e.g. `std::vector<bool>` is fully specialised to improve space efficiency)
+
+It is a bad idea to specialise functions, because they cannot be partially specialised, and explicit specialisation is better done via overloading. For this reason, explicit specialisation is only to be done on templated classes.
+
+```cpp
+// partial specialisation
+// note that we've given a partial amount of info about what the template type is,
+// namely that it's a pointer, hence the qualifier "partial"
+template <typename T>
+class stack<T*> {
+public:
+    // some interface here
+
+    auto sum() -> int {
+        // here instead of summing by value naively, we would probably write
+        // an implementation that dereferenced each value in the std::vector
+        // this would make much more sense than summing by address (!!!)
+    }
+
+private:
+    std::vector<T*> stack_;
+};
+
+// explicit specialisation
+// note the use of an empty template parameter list
+template <>
+class vector<bool> {
+public:
+    // regular old interface
+
+private:
+    // here instead of storing a bool[], we might use some other space-efficient
+    // representation, since bools occupy only 1 bit of memory instead of the 8
+    // which are packed into a byte
+}
+```
+
+### Type traits
+
+Type traits are a mechanism to introspect about the properties of types in C++, which can be helpful when you're working with templated types. These traits either allow you to ask questions about the type or make transformations to types (e.g. adding/removing `const`).
+
+Traits that ask questions about types include things like
+- `std::numeric_limits<T>`, which provides the minimum and maximum values of a type
+    - This is in contrast to the C way to do this via `#define`s
+- `std::is_signed<T>`, which provides a way to tell whether a type is signed (e.g. signed integer) or not
+
+The "answer" to the question will be in some field of the trait (and the traits themselves usually take the form of a `struct`).
+
+"Question traits" can be used to do conditional compilation:
+
+```cpp
+auto algorithm_signed(int i) -> void;
+auto algorithm_unsigned(unsigned u) -> void;
+
+template <typename T>
+auto algorithm(T t) -> void {
+    // provided that the conditional expression is a bool constant expression itself,
+    // if constexpr can resolve which conditional branch to use at compile-time
+    // in this case, we keep the algorithm for the appropriate signedness of T, and
+    // throw a static (compile time!) error if this isn't possible
+    if constexpr(std::is_signed<T>::value) {
+        algorithm_signed(t);
+    }
+    else if constexpr(std::is_unsigned<T>::value) {
+        algorithm_unsigned(t);
+    }
+    else {
+        static_assert(std::is_signed<T>::value || std::is_unsigned<T>::value, "must be signed or unsigned");
+    }
+}
+```
+
+Traits used for type transformations include things like `std::move`, which under the hood uses a type trait (called `std::remove_reference`) to perform a conversion to an rvalue reference.
+
+### Variadic templates
+
+Template parameter lists can be of a variable length:
+
+```cpp
+// this acts as a "base case"
+template<typename T>
+T sum(T v) {
+    return v;
+}
+
+// this acts as a "recursive case"
+// typename... Ts is called a template parameter pack
+// Ts... vs is called a function parameter pack
+template<typename T, typename... Ts>
+T sum(T v, Ts... vs) {
+    // vs contains the parameter list less one value, so we are doing some proper
+    // recursion here, although keep in mind this is all happening at compile time
+    return v + sum(vs...);
+}
+```
+
+We can go quite far with this and replicate pattern matching if we liked:
+```cpp
+template<typename T>
+bool pairwise_cmp(T v1) {
+  return false;
+}
+
+template<typename T>
+bool pairwise_cmp(T v1, T v2) {
+    return v1 == v2;
+}
+
+// here, we can actually "capture" the first 2 values instead of just 1,
+// and then do variadic template "recursion" as per usual
+// because we might be given an odd number of arguments though, we either
+// get a compile time warning if no single-arg base case templated function
+// is given, or are forced to implement one with a sensible behaviour
+// (perhaps always returning false if we're pairwise comparing an odd #. of elements)
+template<typename T, typename... Ts>
+bool pairwise_sum(T v1, T v2, Ts... vs) {
+    return v1 == v2 && pairwise_cmp(vs...);
+}
+```
+
+This can also be extended to variadic templated classes: see [tuple](https://github.com/eliben/code-for-blog/blob/master/2014/variadic-tuple.cpp) as an example.
+
+### Member templates
+
+If we wanted to support conversion between one templated class to another templated class (i.e. conversion of a stack of `int`s to a stack of `double`s), then we can use member templates to achieve this:
+
+```cpp
+template <typename T>
+class stack {
+public:
+    // this is a member function that is itself templated by some other type
+    template <typename U>
+    stack(stack<U>&);
+
+    // other stuff here
+
+private:
+    std::vector<T> stack_;
+};
+
+// when giving the definition of the class like this, the extra template type must be
+// treated as an "inner" templated type
+// so this would not be the same as template <typename T, typename U>
+template <typename T>
+template <typename U>
+stack<T>::stack(stack<U>& s) {
+    while (!s.empty()) {
+        stack_.push_back(static_cast<T>(s.pop()));
+    }
+}
+```
+
+### Template template parameters
+
+Template parameters may themselves be templates (e.g. `std::vector`) as opposed to fully-realised types.
+```cpp
+// be very careful when specifying the template parameter list of template template parameters
+// if we were trying to use std::vector here, it technically takes in two template params
+// but we can use variadic template template parameters (!!!) to fix this
+template <typename T, template <typename...> typename cont_t>
+class stack {
+    // ...
+};
+```
+
+This allows us to write things like
+```cpp
+// make it implicit that the vector has ints
+auto s = stack<int, std::vector>{};
+```
+
+instead of
+```cpp
+// must explicitly state that the vector has ints - blergh
+auto s = stack<int, std::vector<int>>{};
+```
+
+<!-- One thing to note here is that the compiler will only consider primary class templates while looking for a match for the template template parameter. A consequence is that partially-specialised templates  -->
+
+### Template argument deduction
+
+The process by which the compiler determines what the types of type parameters and values of non-type parameters should be from the function arguments being used with them.
+
+```cpp
+template <typename T, std::size_t sz>
+auto min_elem(std::array<T, sz> a) -> T {
+    T min = a[0];
+    for (auto i = 0; i < sz; ++i) {
+        min = min < a[i] ? min : a[i];
+    }
+    return min;
+}
+
+// deduces that T = int, sz = 4
+auto min = min_elem(std::array<int, 4>{1, 2, 3, 4});
+```
+
+This works for variadic templates too.
+
+Template argument deduction means that it is technically not necessary to write things like
+```cpp
+std::vector<int>{1, 2, 3};
+```
+when the compiler could quite easily deduce that in
+```cpp
+std::vector{1, 2, 3};
+```
+each element is of type `int`. This is called *implicit deduction.* But specifying the type (as in *explicit deduction*) can be used to leave the compiler in no doubt as to what the template values should be.
 
 ---
 
