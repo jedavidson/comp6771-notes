@@ -1510,9 +1510,12 @@ Template parameters may themselves be templates (e.g. `std::vector`) as opposed 
 // be very careful when specifying the template parameter list of template template parameters
 // if we were trying to use std::vector here, it technically takes in two template params
 // but we can use variadic template template parameters (!!!) to fix this
-template <typename T, template <typename...> typename cont_t>
+// we at least want one template arg for cont_t though (the type)
+template <typename T, template <typename, typename...> typename cont_t>
 class stack {
     // ...
+private:
+    cont_t<T> container_;
 };
 ```
 
