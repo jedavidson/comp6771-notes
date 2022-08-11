@@ -1473,6 +1473,32 @@ bool pairwise_sum(T v1, T v2, Ts... vs) {
 
 This can also be extended to variadic templated classes: see [tuple](https://github.com/eliben/code-for-blog/blob/master/2014/variadic-tuple.cpp) as an example.
 
+```cpp
+// must wrap chain in a struct to allow partial template specialization
+template <int i, class F>
+struct multi {
+    static F chain(F f) {
+        return f * multi<i - 1, F>::chain(f);
+    }
+};
+
+template <class F>
+struct multi<2, F> {
+    static F chain(F f) {
+        return f * f;
+    }
+};
+
+template <int i, class F>
+F compose(F f) {
+    return multi<i, F>::chain(f);
+}
+
+// this prints out 10
+auto increment = std::bind(std::plus<>(), std::placeholders::_1, 1);
+std::cout << compose<10>(increment)(0) << "\n";
+```
+
 ### Member templates
 
 If we wanted to support conversion between one templated class to another templated class (i.e. conversion of a stack of `int`s to a stack of `double`s), then we can use member templates to achieve this:
