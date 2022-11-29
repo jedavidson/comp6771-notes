@@ -1752,6 +1752,8 @@ You should use `std::forward` when you want to wrap functions with a parameteris
 
 ## Dynamic Polymorphism
 
+For the sake of completeness, I should come back and finish these notes when I have the time. It bugs me too!
+
 ---
 
 ## Optiver guest lecture?
