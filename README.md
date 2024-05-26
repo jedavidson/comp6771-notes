@@ -6,7 +6,7 @@
 
 ### `auto` type inference
 
-Try to always use `auto` to get type inference to do the heavy lifting for you. This is a compile-time cost, so there is no runtime penalty incurred for doing this.
+Try to always use `auto` to get type inference to do the heavy lifting for you. This is a compile time cost, so there is no runtime penalty incurred for doing this.
 
 Be careful though, as it sometimes doesn't work out:
 
@@ -1208,31 +1208,200 @@ This implies that, as a general rule of thumb, it is better to manage several wr
 
 ## Dynamic Polymorphism
 
-Polymorphism is the provision of a single interface to entities of different types. When this occurs at runtime, we call it dynamic polymorphism.
+Polymorphism is the provision of a single interface to entities of different types. When this occurs at runtime, we call it dynamic polymorphism. In contrast to some other language, this is (at least for the most part) without performance penalty, in keeping with the C++ ethos of "you don't pay for what you don't use".
 
 ### Inheritance
 
 ```cpp
 class base {
+public:
+    int x;
+    auto foo() -> void;
+
+// as in other languages, protected members are accessible only to objects in a subclass hierarchy
+// (i.e. base itself, and any class which derives from base) 
+protected:
+    int y;
+    auto bar() -> void;
+
+private:
+    int z;
+    auto baz() -> void;
+};
+
+// note the access specifier!
+class derived : public base {
+public:
+    // we can 'override' functions like usual
+    auto foo() -> void;
+};
+```
+
+The access specifier above dictates the maximum level of accessibility of things inherited from the base class:
+
+```cpp
+// public inheritance essentially changes nothing about accessibility
+class derived : public base {
     // ...
 };
 
-class derived : public base {
+// with protected inheritance, the inherited public members of base have their accessibility
+// capped at protected, i.e. no longer part of derived's public interface
+class derived : protected base {
+    // ...
+};
+
+// with private inheritance, the inherited public and protected members have their accessibility
+// capped at private, i.e. only accessible from within derived itself
+class derived : private base {
+    // ...
+};
+
+// the access specifier is optional, and if it is left out, it's just private inheritance
+class derived : base {
     // ...
 };
 ```
 
-TODO: rest of this
+Unless you have a good reason, we typically do public inheritance.
+
+The member variable layout in memory of a derived class is that of contiguous subobjects:
+
+```
+|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|
+| base subobject:             |
+| - member variables          |
+|-----------------------------|
+| derived subobject:          |
+| - non-base member variables |
+|_____________________________|
+```
+
+### Object slicing problem
+
+Since the objects of a derived class may be larger than objects of its base class, it's unclear to the compiler how much space one would need to allocate in a situation like this:
+
+```cpp
+// since a class could derive from base, how much space do we allocate on the stack
+// to hold the obj argument?
+auto do_something(base obj) {
+    obj.say_hi();
+}
+```
+
+The only sensible answer is to allocate enough size for a base class object. However, a consequence of this is that when a derived class object is passed by value as an argument to `do_something`, the copy of the object residing in the memory allocated for the `obj` argument only contains the data of the base class subobject. This is the *object slicing problem*: the additional memory usually contained in a derived class object has been "sliced off" in the copy.
+
+Passing by reference (i.e. references or raw pointers) will avoid object slicing, so we always prefer this when dealing with inheritance hierarchies.
+
+### Dynamic binding
+
+When passing base class objects by reference, C++ uses, by default, the base class implementation of functions, even if they have been overriden in a derived class:
+
+```cpp
+class base {
+public:
+    auto say_hi() -> void {
+        std::cout << "Hi from the base class\n";
+    }
+
+    auto say_bye() -> void {
+        std::cout << "Bye!\n";
+    }
+};
+
+class derived : public base {
+public:
+    auto say_hi() -> void {
+        std::cout << "Hi from the derived class\n";
+    }
+};
+
+auto do_something(base& obj) {
+    obj.say_hi();
+}
+
+do_something(base{});    // prints "Hi from the base class" (fine)
+do_something(derived{}); // prints "Hi from the base class" (weird)
+```
+
+This is mostly a performance consideration; this default is easily determined at compile time, since derived class object references can be *statically bound* to base class object references.
+
+However, C++ can be forced to use *dynamic binding* to determine the right override to pick at runtime using *virtual functions*:
+
+```cpp
+class base {
+public:
+    // the virtual keyword indicates that this function may be overriden in a derived class,
+    // and so C++ must now put in the effort to determine which one to call from the context
+    virtual auto say_hi() -> void {
+        std::cout << "Hi from the base class\n";
+    }
+    
+    virtual auto say_what() -> void {
+        std::cout << "What?\n";
+    }
+
+    // this function is as normal
+    auto say_bye() -> void {
+        std::cout << "Bye!\n";
+    }
+};
+
+class derived : public base {
+public:
+    // the override keyword indicates that it is an override of a base class function
+    auto say_hi() -> void override {
+        std::cout << "Hi from the derived class\n";
+    }
+
+    // the subclass doesn't have to override *every* virtual from the base class
+};
+
+auto do_something(base& obj) {
+    obj.say_hi();
+}
+
+do_something(base{});    // prints "Hi from the base class"
+do_something(derived{}); // prints "Hi from the derived class"
+```
+
+The `override` keyword is technically optional, but there are benefits to using it:
+- If there is no virtual base class function of the same name, using `override` will pick this up at compile-time
+- It's less ambiguous and error-prone for programmers
+
+Virtual functions rely an under-the-hood abstraction called a *vtable*. Each class has its own vtable, stored in the data segment, consisting of an array of function pointers to the definition of each virtual function.
+
+```
+in the code segment, we have
+    base::say_hi() { /* ... */ }
+    derived::say_hi() { /* ... */ }
+    base::say_what() { /* ... */ }
+
+in the data segment, we have
+    base_vtable:    [<pointer to base::say_hi>,    <pointer to base::say_what>]
+    derived_vtable: [<pointer to derived::say_hi>, <pointer to base::say_what>]
+```
+
+If a class has a non-empty vtable, each object of that class internally also holds a pointer to the vtable of its class to aid in dynamic binding. When a virtual function is called on such an object passed by reference (i.e. either by reference or pointer type), C++ will
+- Follow the object's vtable pointer
+- Use offset arithmetic (specific to each virtual function) to find the correct function pointer in the vtable
+- Follow this function pointer to get to the definition of the virtual function and call it
+
+This involves many additional runtime steps beyond a normal function call (i.e. more machine instructions required), and also incurs indirect memory accesses (which can have poor cache performance), so is undesirable in performance-sensitive code. Sometimes, compilers can [devirtualise](https://quuxplusone.github.io/blog/2021/02/15/devirtualization/) virtual function calls to avoid this extra work.
+
+### TODO
+
+Finish remainder of this section
 
 ---
 
 ## Templates
 
-Templates are a form of *static* polymorphism in C++, i.e. compile-time polymorphism.
+Templates are a form of *static* polymorphism in C++, i.e. compile time polymorphism.
 
 ### Function templates
 
-A function template is a prescription for the compiler to generate particular instances of a function varying by type. The emphasis here is on the compiler's role: this happens at compile-time. The process of generating these instances is called *template instantiation* (or *monomorphisation* in other languages).
+A function template is a prescription for the compiler to generate particular instances of a function varying by type. The emphasis here is on the compiler's role: this happens at compile time. The process of generating these instances is called *template instantiation* (or *monomorphisation* in other languages).
 
 ```cpp
 // T is a template type parameter
@@ -1295,7 +1464,7 @@ auto x2 = X<std::string>{"hi"};
 
 ### Inclusion compilation model
 
-Templated functions/classes *must* be defined in header files, because template definitions have to be known at compile-time. This is in contrast to the usual link-time instantiation we use when writing non-polymorphic code that can separate the interface and implementation freely.
+Templated functions/classes *must* be defined in header files, because template definitions have to be known at compile time. This is in contrast to the usual link-time instantiation we use when writing non-polymorphic code that can separate the interface and implementation freely.
 
 This can cause problems though, since it technically exposes implementation details in the interface, but also because it might make compilation a bit slower.
 
@@ -1336,7 +1505,7 @@ public:
 
 ### Constant expressions
 
-A *constant expression* is a variable that can be calculated at compile time (as `#define`'d values are in C), or a function that, if its inputs are known, can be run at compile-time (and its result substituted in place of that function call). We use the `constexpr` keyword to denote such things:
+A *constant expression* is a variable that can be calculated at compile time (as `#define`'d values are in C), or a function that, if its inputs are known, can be run at compile time (and its result substituted in place of that function call). We use the `constexpr` keyword to denote such things:
 
 ```cpp
 constexpr int fact_ce(int n) {
@@ -1361,8 +1530,8 @@ int n_fact = fact(10);
 ```
 
 This has two benefits, where applicable:
-- We are offloading runtime computation to compile-time computation, so get faster programs
-- Potential errors can be flagged at compile-time rather than at runtime, making them easier to pick up on
+- We are offloading runtime computation to compile time computation, so get faster programs
+- Potential errors can be flagged at compile time rather than at runtime, making them easier to pick up on
 
 However, the natural downside is that this workload slows compilation.
 
@@ -1483,7 +1652,7 @@ auto algorithm_unsigned(unsigned u) -> void;
 template <typename T>
 auto algorithm(T t) -> void {
     // provided that the conditional expression is a bool constant expression itself,
-    // if constexpr can resolve which conditional branch to use at compile-time
+    // if constexpr can resolve which conditional branch to use at compile time
     // in this case, we keep the algorithm for the appropriate signedness of T, and
     // throw a static (compile time!) error if this isn't possible
     if constexpr(std::is_signed<T>::value) {
