@@ -1,5 +1,7 @@
 # COMP6771 Lecture Notes
 
+*These notes sometimes include small technical asides and additions that are not strictly part of COMP6771. You can view these as a concise summary of the lectures that also provide some interesting extensions on the material covered in them.*
+
 ## C++ Basics
 
 ### `auto` type inference
@@ -557,8 +559,9 @@ We always fully-qualify things to avoid counterintuitive behaviour with overload
 
 ```cpp
 class foo {
-    // stuff with no accessibility modifier are private by default
+    // until an accessibility modifier is encountered, everything in a class is assumed private
     int a;
+    void f();
 
 // members accessible by everyone
 public:
@@ -592,7 +595,7 @@ private:
 
 As with namespaces, it is customary not to indent a class block.
 
-By default, members of a class are *private*. The only difference between a `struct` and a `class` is that all members of a struct are public by default. We will almost always use a `class` over a `struct` unless we essentially just want a data class with complete access.
+By default, members of a class are *private*. The **only** difference between a `struct` and a `class` is that all members of a `struct` are *public* by default. We will almost always use a `class` unless we essentially just want a data class.
 
 There is a notion of `this` (i.e. `self` in Python), which in a class-defined function call is always a pointer to the class object which called it. However we prefer to just suffix private/internal members with an underscore.
 
@@ -609,6 +612,7 @@ public:
     void f();
 }
 ```
+
 ```cpp
 // in Foo.cpp
 #include "Foo.h"
@@ -628,19 +632,24 @@ void Foo::f() {
 
 ### Constructors
 
-Constructors may specify an *initialiser list*, which gives values to data members in order of their member declaration in the class itself. Crucially, this happens *before* the constructor body is actually executed.
+Constructors may specify an *initialiser list*, which gives values to data members in order of their member declaration in the class itself:
 
 ```cpp
 class MyClass {
 public:
-    MyClass(int i, std::vector<int> j) : i_{i}, j_{j} {} // e.g. MyClass{1, std::vector<int>{1, 2}};
+    MyClass(int i, std::vector<int> j) : i_{i}, j_{j} {
+        // ...
+    }
 private:
     int i_;
     std::vector<int> j_;
 }
 ```
 
+Crucially, this happens *before* the constructor body is actually executed.
+
 When initialising an object, the following order is used:
+
 ```
 for each data member in declaration order
     if it has a used definition initialiser
@@ -661,7 +670,7 @@ Constructors can call other constructors, possibly to set default values:
 class MyClass {
 public:
     MyClass(int i, std::vector<int> j) : i_{i}, j_{j} {}
-    MyClass(std::vector<int> j) : MyClass(6771, j) {}; // e.g. MyClass(std::vector<int>{1, 2});
+    MyClass(std::vector<int> j) : MyClass(6771, j) {};
 private:
     int i_;
     std::vector<int> j_;
@@ -670,7 +679,7 @@ private:
 
 ### Destructors
 
-Methods that are called when an object goes out of scope, which can be useful for cleaning up used resources (e.g. any pointers, opened files, locks, ...). They should not throw exceptions.
+Are functions that are called in the moment before an object goes out of scope, which can be useful for cleaning up used resources (e.g. any pointers, opened files or locks owned by the object). They should not throw exceptions.
 
 ```cpp
 class MyClass {
@@ -678,13 +687,14 @@ class MyClass {
 }
 
 MyClass::~MyClass() noexcept {
-    // do destruction
+    // do destruction, e.g. closing a file
 }
 ```
 
 ### Explicit initialisation
 
 By default, unary constructors can do implicit type conversion from the parameter to the class:
+
 ```cpp
 class Age {
 public:
@@ -702,6 +712,7 @@ Age a = 12;
 ```
 
 Sometimes you want this, other times you don't, because implicit type conversions are generally not liked. To prevent this and force people to do the explicit way, use the `explicit` keyword:
+
 ```cpp
 class Age {
 public:
@@ -714,7 +725,7 @@ private:
 Age a1{12};
 auto a2 = age{12};
 
-// implicit construction now no longer works
+// implicit construction is now an error
 // Age a = 12;
 ```
 
@@ -760,6 +771,7 @@ public:
 ```
 
 Static data members in general can't be initialised in the class itself, but must be done elsewhere:
+
 ```cpp
 auto MyClass::x = "abcd";
 ```
@@ -767,10 +779,11 @@ auto MyClass::x = "abcd";
 ### Special member functions, `default` and `delete`
 
 By default, the compiler will *synthesise* or create some *special member functions* for you. Two examples are
-- If no constructors are given, then a default no-arg constructor will be created for you.
-- A copy constructor that allows one to construct an object as a copy of an existing one.
+- If no constructors are given, then a default no-arg constructor will be created for you
+- A copy constructor that allows one to construct an object as a copy of an existing one
 
 To signal to the compiler that you do want its synthesised constructors (e.g. the default constructor), use the keyword `default`. To signal to the compiler that you *don't* want one of its synthesised constructors (e.g. the copy constructor), use the `delete` keyword.
+
 ```cpp
 class MyClass {
 public:
@@ -805,516 +818,6 @@ In C++, all operators (like `<`, `==`, `[]`) are functions and can be overloaded
 Making a non-member function a friend of a class allows it to access otherwise private internal member fields. This obviously breaks abstraction and should be avoided wherever possible, but it does have its uses:
 - Operator overloading
 - Allowing member functions of related classes (e.g. iterators) to access class internals
-
----
-
-## Exceptions
-
-Exceptions are a runtime mechanism for signifying exceptional circumstances during code exectution. Exception handling is the process of managing exceptions that are raised rather than causing the program to crash.
-
-### Exception objects
-
-All C++ exceptions are objects which inherit from `std::exception`. As such, we
-- throw exceptions by value
-- catch exceptions by `const` reference
-
-### Exception control flow
-
-```cpp
-try {
-    // some code
-} catch (exception1_t const& e1) {
-    // some logging
-} catch (exception2_t const& e2) {
-    // some more logging
-} catch (...) {
-    // logging for any exception other than the previous 2
-}
-```
-
-### Rethrow
-
-```cpp
-try {
-    try {
-        // some code
-    } catch (exception_t const& e) {
-        // some logging
-
-        // exception is rethrown for handling by the next try/catch layer
-        throw e;
-    }
-} catch (exception_t const& e) {
-    // some further logging
-}
-```
-
-### No-throw exception safety (failure transparency)
-
-An operation that is guaranteed to never throw an unhandled exception provides no-throw exception safety. While exceptions may occur, they are handled internally. Some examples of such operations:
-- Closing files
-- Freeing memory
-- Move constructors and move assignments
-- Trivial stack object creation
-
-### Strong exception safety (commit or rollback)
-
-An operation that may fail, but without leaving visible effects (e.g. no modifications to the object's state) provides strong exception safety. This is the most common type of exception safety offered by C++ functions.
-
-To achieve this, first perform all throwing operations that don't modify internal state before doing irreversible, non-throwing operations.
-
-### Basic exception safety (no-leak guarantee)
-
-An operation that may fail and cause side effects, but
-- respects class invariants
-- does not leak resources
-- corrupt data
-on exception provides basic exception safety. Objects are afterward left in a valid but unspecified state, as there is no telling the extent to which the side effects of partial execution have modified things.
-
-### No exception safety
-
-Operations that make no guarantees regarding exceptions provide no exception safety. This is often bad C++ code and should be avoided at all costs (especially since wrapping resources and attaching lifetimes to them can give at least basic exception safety).
-
-
-### `noexcept`
-
-Functions marked as `noexcept` are understood to not throw unhandled exceptions (but doesn't prevent them from doing so). STL functions can operate more efficiently on `noexcept` functions.
-
----
-
-## Resource Management
-
-### Long lifetimes
-
-There are three ways to make an object's lifetime outlive that of its defining scope:
-- Returning out from a function via copy
-- Returning out from a function via reference
-    - The object itself must always outlive the reference, so references to local function variables can result in undefined behaviour!
-- Returning out from a function as a heap resource
-
-### Heap allocation via `new` and `delete`
-
-In C++, the equivalents of `malloc` and `free` are `new` and `delete`. These call the constructors/destructors of a class to create/delete instances of that class.
-
-```cpp
-int* i = new int{6771};
-delete i;
-
-std::vector<int>* v = new std::vector<int>{1, 2, 3};
-delete v;
-
-int *l = new int[123];
-delete[] l; // calls destructor on each elem first before deallocing the array
-```
-
-Since the heap is global unlike local function stacks, this means they outlive their defining scopes.
-
-### Destructors
-
-When a non-reference object goes out of scope, the destructor of that object is called, which frees any underlying heap resources that may be under its control. Examples of where this might be useful are
-- freeing pointers
-- closing open files
-- releasing locks
-
-The process during which these destructor calls are inserted at the end of a scope is called *stack unwinding*.
-
-### Rule of 5/0
-
-When thinking about resource management for a class, there are 5 operations to keep in mind:
-- Destructor
-- Copy constructor and copy assignment
-- Move constructor and move assignment
-
-The *rule of 5* states that if a class defines custom implementations any of the 5 listed operations, then it should also provide custom implementations of the other 4. The reasoning behind this is that if the default behaviour isn't sufficient for one of them, then it likely isn't sufficient for the others too. (Prior to C++11, this was the rule of 3, since copy/move assignment didn't exist then.)
-
-The *rule of 0* states that a class requiring managed resources should either
-- take full responsibility its resources by declaring and implementing all 5 operations
-- declare none of these operations and rely on the default implementations by instead using types that *do* internally manage each resource (through their own implementations of the 5 operations).
-
-```cpp
-class cstring {
-public:
-    // rule of 5: cstring takes full responsibility over its resources
-    ~cstring() { delete[] p; }
-    cstring(cstring const&);
-    cstring(cstring&&);
-    cstring operator=(cstring const&);
-    cstring operator=(cstring&&);
-private:
-    int* p;
-}
-
-class person {
-    // rule of 0: none of the 5 operations are declared and are implicitly defaulted
-    // (this is now effectively just a data class)
-    cstring name;
-    int age;
-}
-```
-
-### Custom copy constructors
-
-Because the default behaviour of a copy constructor is to perform member-wise shallow copies of data members, any pointer resources (e.g. heap arrays) will refer to the same object in both object copies (i.e. changes in one object to this data member reflect in the other). Even worse, during destruction, such resources will be double-freed. So, when writing a copy constructor, make sure to do deep copies:
-
-```cpp
-my_vec::operator=(my_vec const& mv)
-: data_{new int[mv.size_]}
-, size_{mv.size_}
-{
-    std::copy(mv.data_, mv.data_ + mv.size_, data_);
-}
-```
-
-### Custom copy assignment operators
-
-The copy-and-swap idiom is most useful for implementing copy assignment correctly:
-
-```cpp
-my_vec::my_vec(mv_vec const& mv) {
-    // use the copy constructor to create a copy of the object,
-    // then swap out its internals with this object
-    my_vec(mv).swap(*this);
-    return *this;
-}
-
-void my_vec::swap(my_vec& mv) {
-    std::swap(data_, mv.data_);
-    std::swap(size_, mv.size_);
-}
-```
-
-### lvalues and rvalues
-
-An *lvalue* is an expression that is an object reference, which is to say that it refers to an object with a defined address in memory. On the other hand, an *rvalue* is anything that isn't an lvalue. Things which are lvalues include variable names, and things that are rvalues are non-string object literals (e.g. integers) and return values of functions.
-
-```c++
-int a = 3;     //  a = lvalue, 3 = rvalue
-int b = f(a);  //  b = lvalue, f(a) = rvalue
-int c = b;     //  a, b = lvalue
-int d = a + 1; // d = lvalue, a + 1 = rvalue
-```
-
-Loosely speaking, the STL function `std::move` can be used to turn an lvalue into an rvalue. (In reality, what is created is instead an *xvalue*, or expiring value.)
-
-### Move constructor
-
-Rather than creating new instances of a class by copying, we could instead construct it from the internals of another object by moving.
-
-```c++
-// std::capacity(obj, val) replaces the contents of obj by val, and returns the old value
-my_vec::my_vec(my_vec&& orig) noexcept
-: data_{std::exchange(orig.data_, nullptr)}
-, size_{std::exchange(orig.size_, 0)}
-, capacity_{std::exchange(orig.capacity_, 0)} {}
-```
-
-These should always be marked `noexcept`, as throwing move constructors are very rare, and by specifying a function as `noexcept`, the compiler can perform many optimisations to improve performance (namely, it doesn't have to worry about generating exception code).
-
-In effect, a new object is created by "stealing" the resources of the moved object. Afterwards, the moved object should be left in a *valid but indeterminate/unspecified state*. Validity is dependent on the exact type being worked with (i.e. what constitutes a valid object of one type depends on the requirements for values of that type), however being in an unspecified state means that you cannot determine what its internal state may look like (i.e. you might not be able to say for sure what a specified member field's value will be).
-
-It is bad practice to use a moved-from object after move construction/assignment, and often constitutes undefined behaviour.
-
-### RAII
-
-*Resource Acquisition Is Initialisation* is a C++ programming technique in which resources (heap objects) are encapsulated inside objects, therefore binding the life cycle of an acquired resource to the lifetime of that object. We *acquire* the resource in the constructor, and we *release* the resources in the destructor.
-
-Every resource should be owned by either
-- another resource (e.g. smart pointer, data member)
-- a named rsource on the stack
-- a nameless temporary variable
-
----
-
-## Smart pointers
-
-In C++11 and onwards, smart pointers are a way of wrapping unnamed heap objects (i.e. raw pointers) in named stack objects so that the lifetime of that heap object can be more easily managed (in line with RAII).
-
-### Unique pointers (`std::unique_ptr`)
-
-A unique pointer is an abstraction that takes *unique* ownership of a heap resource. When constructed with an initial heap object to manage, the unique pointer is the sole object who owns the managed resource, with all other access to it coming from raw pointers acting as observers. This forms the common usage pattern with unique pointers: dominion over the resource is established by the unique pointer, which is then held by some object, and any additional references to the underlying heap value are via raw observer pointers.
-
-```cpp
-// my_up now owns the heap resources associated with the string "hello"
-auto up = std::make_unique<std::string>("hello");
-
-// use make_unique when constructing them, it's better practice than the alternative
-// with explicit use of `new`: prone to issues regarding use of unnamed temporaries
-auto up = std::unique_ptr<std::string>(new std::string("hello"));
-
-// we can get a raw pointer to the underlying value, a so-called observer
-// p_raw will be a std::string*
-auto p = up.get();
-
-// we can access the actual value pointed to using operator* and operator->
-auto v = *up;
-
-// we can also relinquish ownership of the resource, and other stuff too
-// r will now be a std::string*
-auto r = up.release();
-```
-
-Since they are unique, these types of pointers are not copy-constructible/assignable (as these are explicitly `delete`d).
-
-Once a unique pointer goes out of scope, its destructor is called. Naturally, when this destructor is called, its managed heap resource is destroyed. A consequence is that any observer pointers to a unique pointer that goes out of scope will thus point to garbage memory, so some care has to be taken when
-
-### Shared pointers (`std::shared_ptr`)
-
-A shared pointer is an abstraction that allows ownership of an object to be shared across multiple pointers, instead of uniquely owned by one pointer. This essentially acts as a reference-counted pointer, in that the underlying heap resource is only ever destroyed once the number of shared pointers which point to it hits 0, allowing some pointers to come and go without leading to the demise of that heap object. (This reference count is updated atomically to allow use in concurrent situations.)
-
-A shared pointer is used in much the same way as a unique pointer, except that you obviously cannot relinquish ownership of the resource, and that we can view the active reference count for the heap resource.
-
-```c++
-// sp1 is now one of the shared pointers to the string "hello"
-auto sp1 = std::make_shared<std::string>("hello");
-
-// can access the underlying value by operator*
-auto v = *sp1;
-
-{
-    // we make more shared pointers by copy-constructing another shared pointer
-    // this adds 1 to the reference count of all shared pointers to that resource
-    auto sp2 = sp1;
-    auto sp3 = sp2;
-
-    // we can view the reference count at any time
-    auto rc = sp1.use_count(); // = sp2.use_count() = sp3.use_count() too
-}
-
-// sp2 and sp3 are now destroyed, but the heap object remains until sp1 is destroyed
-```
-
-Because not all accesses of a value necessarily need to be responsible for the object itself, we can create an analogue of "observers" by using weak pointers. These do not contribute to the reference count of that heap resource, but if usage of the resource is required (perhaps only temporarily), it must be converted to a shared pointer. Otherwise, all one can do with a unique pointer is check whether the shared pointer's managed resource is there or not.
-
-```cpp
-// wp is now a weak pointer to sp1
-auto wp = std::weak_ptr<std::string>(sp1);
-
-// if pointer is expired, then the heap resource is gone
-if (wp.expired()) {
-    // nothing we can do with wp now safely
-}
-
-// on the other hand, if it does exist, to get access to it, we must get a "lock" on it first
-// (i.e. get a shared pointer to the resource)
-else {
-    auto sp = wp.lock();
-    // free to use the resource safely now, and this reference will be cleaned up
-    // when sp goes out of scope
-}
-
-// from a weak pointer, you can view the reference count
-auto rc = wp.use_count();
-```
-
-### When to use unique and shared pointers
-
-It's almost always the case that you want unique ownership over the object instead of shared ownership, so it makes sense to use unique pointers over shared pointers.
-
-You should use shared pointers if
-- an object has multiple owners, and it's unclear as to which one will be the longest-lived (e.g. a multithreaded situation needing access to a common resource, where it may not be known which thread exits last)
-- you need safe temporary access to an object, which is not guaranteed for observing raw pointers of a unique pointer
-
-These situations are rare in simple use cases, though.
-
-### Partial construction
-
-If an exception is thrown in a constructor, then only some of its subobjects (i.e. fields) are fully constructed. The C++ standard states that only destructors for these fully constructed subobjects are called, but crucially the constructor of the object itself is not called.
-
-When working with raw pointers, this is a problem, because the destructor of a pointer does nothing, leading to memory leaks. By using smart pointers, the leak is avoided, as upon subobject destruction, the destructor of a smart pointer is called, which frees underlying memory (at least in the case of a unique pointer).
-
-So, as a general rule of thumb, it is better to manage several wrappers around individual objects which each are responsible/have ownership over that singular resource.
-
----
-
-## Templates
-
-Polymorphism is the provision of a single interface to entities of different types. Templates are a form of static polymorphism in C++.
-
-### Function templates
-
-A function template is a prescription for the compiler to generate particular instances of a function varying by type. The emphasis here is on the compiler's role, unlike other languages that handle this kind of polymorphism at runtime. The process of generating these instances is called *template instantiation*.
-
-```cpp
-// T is a template type parameter
-// the thing inside the <> is called a template parameter list
-template<typename T>
-auto min(T a, T b) -> T {
-    return a < b ? a : b;
-}
-
-// because we are calling this templated function with T = int and T = double,
-// the compiler will generate instances of the function min for these two types
-// in the sense that there are two separate implementations present:
-min(1, 2);     // auto min(int a, int b) -> int
-min(0.9, 2.3); // auto min(double a, double b) -> double
-
-// note the use of template argument deduction (?)
-```
-
-While this does slow down compilation and makes binaries larger, it is often advantageous to do this work upfront before runtime as it improves performance once the code is actually run, as there are less runtime checks incurred.
-
-### Type and non-type parameters
-
-A template type parameter has unknown type and no value. A non-type parameter has known type with unknown value.
-
-An example of how this might be useful is writing a generic procedure to find the minimum element of a `std::array`. These have fixed size which is specified as a template parameter, so we cannot simply parameterise the function over its element type.
-
-```cpp
-template <typename T, std::size_t sz>
-auto min_elem(std::array<T, sz> const a) -> T {
-    // find the smallest element in a and return it
-}
-
-// compiler deduces what T and sz should be from a
-```
-
-### Class templates
-
-We can do similar things for classes as well, creating *class templates*.
-
-```cpp
-template <typename T>
-class X {
-    T foo_;
-
-public:
-    X(T foo) : foo_{foo} {}
-
-    auto get_foo() -> T {
-        return foo_;
-    }
-
-    auto set_foo(T foo) -> void {
-    }
-};
-
-// use like this
-auto x1 = X<int>{1};
-auto x2 = X<std::string>{"hi"};
-```
-
-The implementation of member functions doesn't necessarily need to be inside the class definition:
-
-```cpp
-template <typename T>
-class X {
-    T foo_;
-
-public:
-    X(T foo) : foo_{foo} {}
-
-    auto get_foo() -> T;
-    auto set_foo(T foo) -> void;
-};
-
-template <typename T>
-auto X<T>::get_foo() -> T {
-    return foo_;
-}
-
-template <typename T>
-auto X<T>::set_foo(T foo) -> void {
-    foo_ = foo;
-}
-```
-
-You can do template specialisation on classes as well:
-
-```cpp
-template <>
-class X<int> {
-    // we can change the internal data members of the class just fine
-    // in fact, this might be a primary driver for wanting to specialise
-    // the template in the first place
-    int foo_;
-    int bar_;
-
-public:
-    X(int foo) : foo_{foo}, bar_{-foo} {}
-
-    auto get_foo() -> int {
-        return foo_;
-    }
-
-    auto set_foo(int foo) -> void {
-        if (foo != bar_) {
-            foo_ = foo;
-        }
-    }
-
-    // we could add more functions here to the public interface, but it's generally
-    // a good idea to not, so that they're easier to use transparently as a user
-};
-```
-
-### Inclusion compilation model
-
-Templated functions/classes must be defined in header files, because template definitions have to be known at compile time. This is in contrast to the usual link-time instantiation we use when writing non-polymorphic code that can separate the interface and implementation freely.
-
-This can cause problems though, since it technically exposes implementation details in the interface, but also because it might make compilation a bit slower.
-
-If in the above example the `set_foo` member function was never used, then no code is actually generated for that member function. This is called *lazy instantiation.* The same is not true for non-templated classes (i.e. if a class is non-templated and has member functions which are technically not used by anything, they are still generated anyhow).
-
-### Static members and friends of templated classes
-
-Each template instantiation of a class has its own set of static members, as well as friend functions.
-
-```cpp
-template <typename T>
-class X {
-    T foo_;
-
-    // each X<T>, X<U>, X<V> instantiation has its own bar_ member
-    static int bar_;
-
-public:
-    X(T foo) : foo_{foo} {}
-
-    auto get_foo() -> T {
-        return foo_;
-    }
-
-    auto set_foo(T foo) -> void {
-    }
-
-    // each X<T>, X<U>, X<V> instantiation has its own operator<< friend
-    friend auto operator<<(std::ostream& os, X const& x) -> std::ostream& {
-        // ...
-    }
-};
-```
-
----
-
-## Constant expressions
-
-A `constexpr` is a variable that can be calculated at compile time (a la `#define`s in C), or a function that, if its inputs are known, can be run at compile time (and its result substituted in place of that function call).
-
-```cpp
-constexpr int fact_ce(int n) {
-    return n <= 1 ? 1 : n * fact_ce(n - 1);
-}
-
-int fact(int n) {
-    return n <= 1 ? 1 : n * fact(n - 1);
-}
-
-// can easily be calculated at compile time
-constexpr int n = 10 + 20;
-
-// function call is evaluated at compile time
-// the omission of the constexpr keyword here means that the compiler is allowed
-// to turn this into a constant expression if it wants to, but doesn't have to
-// OTOH if we did specify it as a constexpr int n_fact_ce, it must
-int n_fact_ce = fact_ce(10);
-
-// not evaluated at compile time
-int n_fact = fact(10);
-```
-
-This has two benefits, where applicable:
-- We are offloading runtime computation to compile-time computation => faster programs
-- Potential errors can be flagged at compile-time rather than at runtime, making them easier to pick up on
 
 ---
 
@@ -1382,7 +885,486 @@ using const_iterator = // your const iterator type here
 
 If you have a bidirectional iterator already, you can get reverse iterators for free by using the `reverse_iterator` and `const_reverse_iterator` iterator adaptors.
 
-## Advanced Templates
+---
+
+## Exceptions
+
+Exceptions are a runtime mechanism for signifying exceptional circumstances during code exectution. Exception handling is the process of managing exceptions that are raised rather than causing the program to crash.
+
+### Exception objects
+
+All C++ exceptions are objects which derive from (i.e. are subclasses of) `std::exception`. As such, we
+- throw exceptions by value
+- catch exceptions by `const` reference
+
+### Exception control flow
+
+```cpp
+try {
+    // some code
+} catch (exception1_t const& e1) {
+    // some logging
+} catch (exception2_t const& e2) {
+    // some more logging
+} catch (...) {
+    // logging for any exception other than the previous 2
+}
+```
+
+### Rethrow
+
+```cpp
+try {
+    try {
+        // some code
+    } catch (exception_t const& e) {
+        // some logging
+
+        // exception is rethrown for handling by the next try/catch layer
+        throw e;
+    }
+} catch (exception_t const& e) {
+    // some further logging
+}
+```
+
+### No-throw exception safety (failure transparency)
+
+An operation that is guaranteed to never throw an unhandled exception provides no-throw exception safety. While exceptions may occur, they are handled internally. Some examples of such operations:
+- Closing files
+- Freeing memory
+- Move constructors and move assignments
+- Trivial stack object creation
+
+### Strong exception safety (commit or rollback)
+
+An operation that may fail, but without leaving visible effects (e.g. no modifications to the object's state) provides strong exception safety. This is the most common type of exception safety offered by C++ functions.
+
+To achieve this, first perform all throwing operations that don't modify internal state before doing irreversible, non-throwing operations.
+
+### Basic exception safety (no-leak guarantee)
+
+An operation that may fail and cause side effects, but
+- respects class invariants
+- does not leak resources
+- corrupt data
+on exception provides basic exception safety. Objects are afterward left in a *valid but unspecified state*, as there is no telling the extent to which the side effects of partial execution have modified things.
+
+### No exception safety
+
+Operations that make no guarantees regarding exceptions provide no exception safety. This is often bad C++ code and should be avoided at all costs (especially since wrapping resources and attaching lifetimes to them can give at least basic exception safety).
+
+### `noexcept`
+
+Functions marked as `noexcept` are understood to not throw unhandled exceptions (but doesn't technically prevent them from doing so). STL functions can operate more efficiently on `noexcept` functions.
+
+---
+
+## Resource Management
+
+### Long lifetimes
+
+There are three ways to make an object's lifetime outlive that of its defining scope:
+- Returning out from a function via copy
+- Returning out from a function via reference
+    - The object itself must always outlive the reference, so references to local function variables can result in undefined behaviour!
+- Returning out from a function as a heap resource
+
+### Heap allocation via `new` and `delete`
+
+In C++, the equivalents of `malloc` and `free` are `new` and `delete`. These call the constructors/destructors of a class to create/delete instances of that class.
+
+```cpp
+int* i = new int{6771};
+delete i;
+
+std::vector<int>* v = new std::vector<int>{1, 2, 3};
+delete v;
+
+int *l = new int[123];
+delete[] l; // calls destructor on each elem first before deallocing the array
+```
+
+Since the heap is global unlike local function stacks, this means they outlive their defining scopes.
+
+### Destructors
+
+When a non-reference object goes out of scope, the destructor of that object is called, which frees any underlying heap resources that may be under its control. Examples of where this might be useful:
+- Freeing pointers
+- Closing open files
+- Releasing locks
+
+The process during which these destructor calls are inserted at the end of a scope is called *stack unwinding*.
+
+### Rule of 5/0
+
+When thinking about resource management for a class, there are 5 operations to keep in mind:
+- Destructor
+- Copy constructor and copy assignment
+- Move constructor and move assignment
+
+The *rule of 5* states that if a class defines custom implementations any of the 5 listed operations, then it should also provide custom implementations of the other 4. The reasoning behind this is that if the default behaviour isn't sufficient for one of them, then it likely isn't sufficient for the others too. (Prior to C++11, this was the rule of 3, since copy/move assignment didn't exist then.)
+
+The *rule of 0* states that a class requiring managed resources should either
+- take full responsibility its resources by declaring and implementing all 5 operations
+- declare none of these operations and rely on the default implementations by instead using types that *do* internally manage each resource (through their own implementations of the 5 operations).
+
+```cpp
+class cstring {
+public:
+    // rule of 5: cstring takes full responsibility over its resources
+    ~cstring() { delete[] p; }
+    cstring(cstring const&);
+    cstring(cstring&&);
+    cstring operator=(cstring const&);
+    cstring operator=(cstring&&);
+private:
+    char* p;
+}
+
+class person {
+    // rule of 0: none of the 5 operations are declared and are implicitly defaulted
+    // (this is now effectively just a dataclass)
+    cstring name;
+    int age;
+}
+```
+
+### Custom copy constructors
+
+Because the default behaviour of a copy constructor is to perform member-wise shallow copies of data members, any pointer resources (e.g. heap arrays) will refer to the same object in both object copies (i.e. changes in one object to this data member reflect in the other). Even worse, during destruction, such resources will be double-freed. So, when writing a copy constructor, make sure to do deep copies:
+
+```cpp
+my_vec::operator=(my_vec const& mv)
+: data_{new int[mv.size_]}
+, size_{mv.size_}
+{
+    std::copy(mv.data_, mv.data_ + mv.size_, data_);
+}
+```
+
+### Custom copy assignment operators
+
+The copy-and-swap idiom is most useful for implementing copy assignment correctly:
+
+```cpp
+my_vec::my_vec(mv_vec const& mv) {
+    // use the copy constructor to create a copy of the object,
+    // then swap out its internals with this object
+    my_vec(mv).swap(*this);
+    return *this;
+}
+
+void my_vec::swap(my_vec& mv) {
+    std::swap(data_, mv.data_);
+    std::swap(size_, mv.size_);
+}
+```
+
+### Value categories: lvalues and rvalues
+
+An *lvalue* is an expression that is an object reference, which is to say that it refers to an object with a defined address in memory. On the other hand, an *rvalue* is anything that isn't an lvalue. Things which are lvalues include variable names, and things that are rvalues are non-string object literals (e.g. integers) and return values of functions.
+
+```c++
+int a = 3;     //  a = lvalue, 3 = rvalue
+int b = f(a);  //  b = lvalue, f(a) = rvalue
+int c = b;     //  a, b = lvalue
+int d = a + 1; // d = lvalue, a + 1 = rvalue
+```
+
+These are the two main *value categories*, [but in reality, it is not a strict dichotomy](https://en.cppreference.com/w/cpp/language/value_category).
+
+Loosely speaking, `std::move` can be used to turn an lvalue into an rvalue. (This is a bit of a lie: in reality, what is created is instead an *xvalue*, or expiring value.)
+
+### Move constructor
+
+Rather than creating new instances of a class by copying, we could instead construct it from the internals of another object by moving:
+
+```c++
+// std::capacity(obj, val) replaces the contents of obj by val, and returns the old value
+my_vec::my_vec(my_vec&& orig) noexcept
+: data_{std::exchange(orig.data_, nullptr)}
+, size_{std::exchange(orig.size_, 0)}
+, capacity_{std::exchange(orig.capacity_, 0)} {}
+```
+
+These should always be marked `noexcept`, as throwing move constructors are very rare, and by specifying a function as `noexcept`, the compiler can perform many optimisations to improve performance (namely, it doesn't have to worry about generating exception code).
+
+In effect, a new object is created by "stealing" the resources of the moved object. Afterwards, the moved object should be left in a *valid but indeterminate/unspecified state*. Validity is dependent on the exact type being worked with (i.e. what constitutes a valid object of one type depends on the requirements for values of that type), however being in an unspecified state means that you cannot determine what its internal state may look like (i.e. you might not be able to say for sure what a specified member field's value will be).
+
+It is bad practice to use a moved-from object after move construction/assignment, and often constitutes undefined behaviour. A well-configured compiler will warn about this.
+
+### RAII
+
+*Resource Acquisition Is Initialisation* is a C++ programming technique in which resources (i.e. heap objects) are encapsulated inside objects, therefore binding the life cycle of an acquired resource to the lifetime of that object. We *acquire* the resource in the constructor, and we *release* the resources in the destructor.
+
+Every resource should be owned by one of the following:
+- Another resource (e.g. smart pointer, data member)
+- A named rsource on the stack
+- A nameless temporary variable
+
+---
+
+## Smart pointers
+
+In C++11 and onwards, smart pointers are a way of wrapping unnamed heap objects (i.e. raw pointers) in named stack objects so that the lifetime of that heap object can be more easily managed (in keeping with the spirit of RAII).
+
+### Unique pointers (`std::unique_ptr`)
+
+A unique pointer is an abstraction that takes *unique* ownership of a heap resource. When constructed with an initial heap object to manage, the unique pointer is the sole object who owns the managed resource, with all other access to it coming from raw pointers acting as observers. This forms the common usage pattern with unique pointers: dominion over the resource is established by the unique pointer, which is then held by some object, and any additional references to the underlying heap value are via raw observer pointers.
+
+```cpp
+// my_up now owns the heap resources associated with the string "hello"
+auto up = std::make_unique<std::string>("hello");
+
+// we use make_unique when constructing them, as it's better than the alternative,
+// i.e. explicit use of new (prone to issues regarding use of unnamed temporaries)
+auto up = std::unique_ptr<std::string>(new std::string("hello"));
+
+// we can get a raw pointer to the underlying value, a so-called observer
+// p_raw will be of type std::string*
+auto p = up.get();
+
+// we can access the actual value pointed to using operator* and operator->
+auto v = *up;
+
+// we can also relinquish ownership of the resource, and other stuff too
+// r will now be a std::string*
+auto r = up.release();
+```
+
+Since they are unique, these types of pointers are not copy-constructible/assignable (i.e. these are explicitly `delete`d in their implementations).
+
+Once a unique pointer goes out of scope, its destructor is called. Naturally, when this destructor is called, its managed heap resource is destroyed. A consequence is that any observer pointers to a unique pointer that goes out of scope will thus point to garbage memory, so some care has to be taken when using an observer pointer.
+
+### Shared pointers (`std::shared_ptr`)
+
+A shared pointer is an abstraction that allows ownership of an object to be shared across multiple pointers, instead of uniquely owned by one pointer. This essentially acts as a reference-counted pointer, in that the underlying heap resource is only ever destroyed once the number of shared pointers which point to it hits 0, allowing some pointers to come and go without leading to the demise of that heap object. This reference count is updated atomically to allow use in concurrent situations. (There is no non-atomic built-in alternative, unlike e.g. Rust's `Rc` and `Arc`.)
+
+A shared pointer is used in much the same way as a unique pointer, except that you obviously cannot relinquish ownership of the resource, and that we can view the active reference count for the heap resource.
+
+```c++
+// sp1 is now one of the shared pointers to the string "hello"
+auto sp1 = std::make_shared<std::string>("hello");
+
+// can access the underlying value by operator*
+auto v = *sp1;
+
+{
+    // we make more shared pointers by copy-constructing another shared pointer
+    // this adds 1 to the reference count of all shared pointers to that resource
+    auto sp2 = sp1;
+    auto sp3 = sp2;
+
+    // we can view the reference count at any time
+    auto rc = sp1.use_count(); // = sp2.use_count() = sp3.use_count() too
+}
+
+// sp2 and sp3 are now destroyed, but the heap object remains until sp1 is destroyed
+```
+
+Because not all accesses of a value necessarily need to be responsible for the object itself, we can create an analogue of "observers" by using weak pointers. These do not contribute to the reference count of that heap resource, but if usage of the resource is required (perhaps only temporarily), it must be converted to a shared pointer. Otherwise, all one can do with a unique pointer is check whether the shared pointer's managed resource is there or not.
+
+```cpp
+// wp is now a weak pointer to sp1
+auto wp = std::weak_ptr<std::string>(sp1);
+
+// if pointer is expired, then the heap resource is gone
+if (wp.expired()) {
+    // nothing we can do with wp now safely
+}
+
+// on the other hand, if it does exist, to get access to it, we must get a "lock" on it first
+// (i.e. get a shared pointer to the resource)
+else {
+    auto sp = wp.lock();
+    // free to use the resource safely now, and this reference will be cleaned up
+    // when sp goes out of scope
+}
+
+// from a weak pointer, you can view the reference count
+auto rc = wp.use_count();
+```
+
+### When to use unique and shared pointers
+
+It's almost always the case that you want unique ownership over the object instead of shared ownership, so it makes sense to use unique pointers over shared pointers.
+
+You should use shared pointers if, for example:
+- An object has multiple owners, and it's unclear as to which one will be the longest-lived (e.g. a multithreaded situation needing access to a common resource, where it may not be known which thread exits last)
+- You need safe temporary access to an object, which is not guaranteed for observing raw pointers of a unique pointer
+
+These situations are rare in simple use cases, though.
+
+### Smart pointers and partial construction
+
+If an exception is thrown in a constructor, then only some of its subobjects (i.e. fields) are fully constructed. The C++ standard states that only destructors for these fully constructed subobjects are called, but crucially the constructor of the object itself is not called.
+
+When working with raw pointers, this is a problem, because the destructor of a pointer does nothing, leading to memory leaks. By using smart pointers, the leak is avoided, as upon subobject destruction, the destructor of a smart pointer is called, which frees underlying memory (at least in the case of a unique pointer).
+
+This implies that, as a general rule of thumb, it is better to manage several wrappers around individual objects which each are responsible/have ownership over that singular resource.
+
+---
+
+## Dynamic Polymorphism
+
+Polymorphism is the provision of a single interface to entities of different types. When this occurs at runtime, we call it dynamic polymorphism.
+
+### Inheritance
+
+```cpp
+class base {
+    // ...
+};
+
+class derived : public base {
+    // ...
+};
+```
+
+TODO: rest of this
+
+---
+
+## Templates
+
+Templates are a form of *static* polymorphism in C++, i.e. compile-time polymorphism.
+
+### Function templates
+
+A function template is a prescription for the compiler to generate particular instances of a function varying by type. The emphasis here is on the compiler's role: this happens at compile-time. The process of generating these instances is called *template instantiation* (or *monomorphisation* in other languages).
+
+```cpp
+// T is a template type parameter
+// the thing inside the <> is called a template parameter list
+template<typename T>
+auto min(T a, T b) -> T {
+    return a < b ? a : b;
+}
+
+// because we are calling this templated function with T = int and T = double,
+// the compiler will generate instances of the function min for these two types
+// in the sense that there are two separate implementations present:
+min(1, 2);     // auto min(int a, int b) -> int
+min(0.9, 2.3); // auto min(double a, double b) -> double
+
+// note the use of template argument deduction (?)
+```
+
+While this does slow down compilation and makes binaries larger, it is often advantageous to do this work upfront before runtime as it improves performance once the code is actually run, as there are less runtime checks incurred.
+
+### Type and non-type parameters
+
+A template type parameter has unknown type and no value. A non-type parameter has known type with unknown value.
+
+An example of how this might be useful is writing a generic procedure to find the minimum element of a `std::array`. These have fixed size which is specified as a template parameter, so we cannot simply parameterise the function over its element type.
+
+```cpp
+template <typename T, std::size_t sz>
+auto min_elem(std::array<T, sz> const a) -> T {
+    // find the smallest element in a and return it
+}
+
+// compiler deduces what T and sz should be from a
+```
+
+### Class templates
+
+We can do similar things for classes as well, creating *class templates*:
+
+```cpp
+template <typename T>
+class X {
+    T foo_;
+
+public:
+    X(T foo) : foo_{foo} {}
+
+    auto get_foo() -> T {
+        return foo_;
+    }
+
+    auto set_foo(T foo) -> void {
+    }
+};
+
+// use like this
+auto x1 = X<int>{1};
+auto x2 = X<std::string>{"hi"};
+```
+
+### Inclusion compilation model
+
+Templated functions/classes *must* be defined in header files, because template definitions have to be known at compile-time. This is in contrast to the usual link-time instantiation we use when writing non-polymorphic code that can separate the interface and implementation freely.
+
+This can cause problems though, since it technically exposes implementation details in the interface, but also because it might make compilation a bit slower.
+
+If in the above example the `set_foo` member function was never used, then no code is actually generated for that member function. This is called *lazy instantiation*. The same is not true for non-templated classes (i.e. if a class is non-templated and has member functions which are technically not used by anything, they are still generated anyhow).
+
+### Static members and friends of templated classes
+
+Each template instantiation of a class has its own set of static members, as well as friend functions.
+
+```cpp
+template <typename T>
+class X {
+    T foo_;
+
+    // each X<T>, X<U>, X<V> instantiation has its own bar_ member
+    static int bar_;
+
+public:
+    X(T foo) : foo_{foo} {}
+
+    auto get_foo() -> T {
+        return foo_;
+    }
+
+    auto set_foo(T foo) -> void {
+    }
+
+    // each X<T>, X<U>, X<V> instantiation has its own operator<< friend
+    friend auto operator<<(std::ostream& os, X const& x) -> std::ostream& {
+        // ...
+    }
+};
+```
+
+---
+
+## Metaprogramming and advanced templates
+
+### Constant expressions
+
+A *constant expression* is a variable that can be calculated at compile time (as `#define`'d values are in C), or a function that, if its inputs are known, can be run at compile-time (and its result substituted in place of that function call). We use the `constexpr` keyword to denote such things:
+
+```cpp
+constexpr int fact_ce(int n) {
+    return n <= 1 ? 1 : n * fact_ce(n - 1);
+}
+
+int fact(int n) {
+    return n <= 1 ? 1 : n * fact(n - 1);
+}
+
+// can easily be calculated at compile time
+constexpr int n = 10 + 20;
+
+// function call is evaluated at compile time
+// the omission of the constexpr keyword here means that the compiler is allowed
+// to turn this into a constant expression if it wants to, but doesn't have to
+// OTOH if we did specify it as a constexpr int n_fact_ce, the compiler must do it
+int n_fact_ce = fact_ce(10);
+
+// not evaluated at compile time, because fact isn't marked constexpr
+int n_fact = fact(10);
+```
+
+This has two benefits, where applicable:
+- We are offloading runtime computation to compile-time computation, so get faster programs
+- Potential errors can be flagged at compile-time rather than at runtime, making them easier to pick up on
+
+However, the natural downside is that this workload slows compilation.
 
 ### Default members
 
@@ -1405,6 +1387,7 @@ Now when instantiating `stack`, one can give just the element type and fall back
 An example of this being done in practice is `std::vector`, which can take a second type parameter for a custom element allocator. Since it is uncommon to want to do this, it has a sane default template type parameter set in this case.
 
 All template parameter lists (e.g. in member function definitions placed outside of the class declaration) have to be updated to conform as well if a template parameter is given a default value:
+
 ```cpp
 template <typename T, typename U = int>
 class X {
@@ -1426,6 +1409,7 @@ auto X::g() -> T {
 ```
 
 Template type parameters with defaults have to be placed at the end of the template parameter list, so it is not valid to start a template like
+
 ```cpp
 template <typename X, typename Y = int, typename Z>
 ```
@@ -1436,7 +1420,7 @@ If we want to give a more specific implementation of a templated type, we can us
 - *Partial specialisation* for a template for a type "based on" a template type parameter (e.g. a specialisation of a template for `T*` or `std::vector<T>`)
 - *Explicit specialisation* for a fully-realised type (e.g. `std::string`, `int`)
 
-Specialising a template is a good idea if
+Specialising a template is a good idea if:
 - You need to preserve the existing semantics of a template for something that wouldn't otherwise work with the default generic implementation
     - Specialising to give completely different semantics/break assumptions about the behaviour of a class to other realised type parameters is poor form
 - You're writing a type trait
@@ -1477,6 +1461,8 @@ private:
 }
 ```
 
+(Aside: this `std::vector<bool>` specialisation exists in C++, but has [come to be seen as a bit of a mistake in retrospect](https://stackoverflow.com/questions/17794569/why-isnt-vectorbool-a-stl-container).) 
+
 ### Type traits
 
 Type traits are a mechanism to introspect about the properties of types in C++, which can be helpful when you're working with templated types. These traits either allow you to ask questions about the type or make transformations to types (e.g. adding/removing `const`).
@@ -1488,7 +1474,7 @@ Traits that ask questions about types include things like
 
 The "answer" to the question will be in some field of the trait (and the traits themselves usually take the form of a `struct`).
 
-"Question traits" can be used to do conditional compilation:
+"Question traits" can be used to do conditional compilation, in combination with constant expressions:
 
 ```cpp
 auto algorithm_signed(int i) -> void;
@@ -1537,6 +1523,7 @@ T sum(T v, Ts... vs) {
 ```
 
 We can go quite far with this and replicate pattern matching if we liked:
+
 ```cpp
 template<typename T>
 bool pairwise_cmp(T v1) {
@@ -1621,6 +1608,7 @@ stack<T>::stack(stack<U>& s) {
 ### Template template parameters
 
 Template parameters may themselves be templates (e.g. `std::vector`) as opposed to fully-realised types.
+
 ```cpp
 // be very careful when specifying the template parameter list of template template parameters
 // if we were trying to use std::vector here, it technically takes in two template params
@@ -1635,18 +1623,21 @@ private:
 ```
 
 This allows us to write things like
+
 ```cpp
 // make it implicit that the vector has ints
 auto s = stack<int, std::vector>{};
 ```
 
 instead of
+
 ```cpp
 // must explicitly state that the vector has ints - blergh
 auto s = stack<int, std::vector<int>>{};
 ```
 
-<!-- One thing to note here is that the compiler will only consider primary class templates while looking for a match for the template template parameter. A consequence is that partially-specialised templates  -->
+<!-- TODO: fix this -->
+<!-- One thing to note here is that the compiler will only consider primary class templates while looking for a match for the template template parameter. A consequence is that partially-specialised templates ... -->
 
 ### Template argument deduction
 
@@ -1669,33 +1660,44 @@ auto min = min_elem(std::array<int, 4>{1, 2, 3, 4});
 This works for variadic templates too.
 
 Template argument deduction means that it is technically not necessary to write things like
+
 ```cpp
 std::vector<int>{1, 2, 3};
 ```
 when the compiler could quite easily deduce that in
+
 ```cpp
 std::vector{1, 2, 3};
 ```
 each element is of type `int`. This is called *implicit deduction.* But specifying the type (as in *explicit deduction*) can be used to leave the compiler in no doubt as to what the template values should be.
 
+### CRTP
+
+TODO: the curiously recurring template pattern
+
 ---
 
-## Advanced Types
+## Advanced types
 
 ### `decltype`
 
 Like many other languages, C++ allows you to determine at compile time what the type of an expression is. Unlike other languages (e.g. Python), this is purely a type-level mechanism, and does not allow for things such as
+
 ```python
 if type(a) == int:
     # do something
 ```
+
 Rather, it is intended to be used for things such as
+
 ```cpp
-int x = 3;
-decltype(x) y; // equivalent to int y;
+auto compare = [] (my_class a, my_class b) {
+    // ...
+};
+std::priority_queue<my_class, std::vector<my_class>, decltype(compare)> pq(compare);
 ```
 
-There are some rules for how this works, given `decltype(e)`:
+There are some rules for how this works, given an occurrence of `decltype(e)`:
 
 1. If `e` is a variable in local or namespace scope, a static member variable or a function parameter, then the result is the variable/parameter's type `T`
 2. If `e` is an lvalue (e.g. a reference), then the result is `T&`
@@ -1711,13 +1713,15 @@ auto add(T& lhs, U& rhs) -> decltype(lhs + rhs) {
 }
 ```
 
-A trailing return type (as of C++11) is crucial here, since
+A trailing return type is crucial here, since
+
 ```cpp
 template <typename lhsT, typename rhsT>
 decltype(lhs + rhs) add(lhsT& lhs, rhsT& rhs) {
     return lhs + rhs;
 }
 ```
+
 would not compile (as `lhs` and `rhs` have been used before they are declared).
 
 ### Binding
@@ -1836,13 +1840,3 @@ auto make_unique(Ts&&... args) -> std::unique_ptr<T> {
 By doing this, value categories are preserved even though the arguments to `make_unique` may be a mix of lvalues and rvalues. This is called *perfect forwarding.*
 
 You should use `std::forward` when you want to wrap functions with a parameterised type, which you might want to do for a few reasons (e.g. doing something special before/after the function call).
-
----
-
-## Dynamic Polymorphism
-
-For the sake of completeness, I should come back and finish these notes when I have the time. It bugs me too!
-
----
-
-## Optiver guest lecture?
