@@ -301,6 +301,29 @@ x.emplace(1, 2, 3);     // forwards the arguments to the MyObj constructor to cr
 
 This can often be a faster way of doing it as you avoid moves/copies.
 
+Some types cannot be stored in containers:
+- References
+    ```cpp
+    // this is a compile error
+    // the full reasoning for this is rather technical, but the crux of the issue
+    // is that per the C++ specification, pointers to references are illegal
+    // https://eel.is/c++draft/container.requirements#container.reqmts-note-2
+    auto vec = std::vector<int&>{};
+    
+    // plain pointers can be stored instead, as can a std::reference_wrapper
+    // (the latter is a reference replacement that is, among other things, assignable)
+    auto vec1 = std::vector<int*>{};
+    auto vec2 = std::vector<std::reference_wrapper<int>>{};
+    ```
+- `const` objects
+    ```cpp
+    // also a compile error, but again the reasoning for this is slightly technical
+    // pre-C++11, the problem was that containers required the inner type to be assignable
+    // (which const objects aren't), but this is not true anymore
+    // nevertheless, compilers will reject this
+    auto vec = std::vector<int const>{};
+    ```
+
 ---
 
 ## STL Iterators
@@ -1389,6 +1412,8 @@ If a class has a non-empty vtable, each object of that class internally also hol
 
 This involves additional runtime overhead beyond a normal function call (more machine instructions are required), and also incurs indirect memory accesses (which can have poor cache performance), so is undesirable in performance-sensitive code. Sometimes, compilers can [devirtualise](https://quuxplusone.github.io/blog/2021/02/15/devirtualization/) virtual function calls to avoid this extra work.
 
+TODO: default args and virtuals
+
 ### Finality
 
 We can specify that a virtual function in a derived class will not be further overriden by any of its own derived classes, i.e. will not be virtual further down the inheritance hierarchy:
@@ -1412,7 +1437,7 @@ public:
 };
 
 // even though obj could refer to objects of a class which inherit from derived,
-// they won't override say_hi by finality, so we can do static binding here rather
+// they won't override say_hi by finality, so we can just do static binding here rather
 // than dynamic binding, which eliminates the performance overhead of the vtable
 auto do_something(derived& obj) {
     obj.say_hi();
@@ -1453,7 +1478,7 @@ class derived : public base {
 public:
     auto say_hi() -> void override {
         // we now have to implement it in any derived classes
-        // it's non-pure virtual, so behaves as normal
+        // say_hi becomes non-pure virtual for any further subclasses of derived
     }
 };
 
@@ -1465,9 +1490,61 @@ public:
 };
 ```
 
-If a class has one or more pure virtual functions, then objects of that class *cannot* be constructed. Moreover, functions cannot accept or return objects of such a class type by value, only by reference.
+If a class has at least one pure virtual member function, then objects of that class *cannot* be constructed. Moreover, functions cannot accept or return objects of such a class type by value, only by reference.
 
 Pure virtual functions allow us to mimic the behaviour of *abstract classes* from other OOP languages.
+
+### OOP type theory
+
+TODO: covariance, contravariance, ...
+
+### Polymorphism and construction
+
+To avoid the object slicing problem, we must use pointers to store polymorphic objects in, say, a container:
+
+```cpp
+// this doesn't work, because all of the contents of the vector are stored inline,
+// which introduces object slicing
+auto objs = std::vector<base>{};
+objs.push_back(base{});
+objs.push_back(derived{});
+
+// we know we can't store references, so we must do pointers (raw or smart)
+auto objs = std::vector<std::unique_ptr<base>>{};
+objs.push_back(std::make_unique<base>());
+objs.push_back(std::make_unique<derived>());
+
+// TODO: there is, supposedly, a subtle problem with this code,
+// but i don't see it right now
+```
+
+Since derived class objects contain base class subobjects, derived classes must call a base class constructor:
+
+```cpp
+class base {
+public:
+    base(int x) : x_{x} {}
+private:
+    int x_;
+};
+
+class derived : public base {
+public:
+    // derived constructor calls base constructor
+    // if it doesn't, then the default constructor of base is implicitly called
+    derived(int x, int y) : base(x), y_{y} {}
+private:
+    int y_;
+};
+```
+
+Initialisation of the base subobject within a derived class object cannot be done within the derived class, even for protected members.
+
+TODO: 6:56
+
+### Polymorphism and destruction
+
+TODO
 
 ---
 
