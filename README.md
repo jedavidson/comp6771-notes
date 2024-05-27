@@ -1341,7 +1341,7 @@ public:
         std::cout << "What?\n";
     }
 
-    // this function is as normal
+    // this function is non-virtual, i.e. normal
     auto say_bye() -> void {
         std::cout << "Bye!\n";
     }
@@ -1387,11 +1387,87 @@ If a class has a non-empty vtable, each object of that class internally also hol
 - Use offset arithmetic (specific to each virtual function) to find the correct function pointer in the vtable
 - Follow this function pointer to get to the definition of the virtual function and call it
 
-This involves many additional runtime steps beyond a normal function call (i.e. more machine instructions required), and also incurs indirect memory accesses (which can have poor cache performance), so is undesirable in performance-sensitive code. Sometimes, compilers can [devirtualise](https://quuxplusone.github.io/blog/2021/02/15/devirtualization/) virtual function calls to avoid this extra work.
+This involves additional runtime overhead beyond a normal function call (more machine instructions are required), and also incurs indirect memory accesses (which can have poor cache performance), so is undesirable in performance-sensitive code. Sometimes, compilers can [devirtualise](https://quuxplusone.github.io/blog/2021/02/15/devirtualization/) virtual function calls to avoid this extra work.
 
-### TODO
+### Finality
 
-Finish remainder of this section
+We can specify that a virtual function in a derived class will not be further overriden by any of its own derived classes, i.e. will not be virtual further down the inheritance hierarchy:
+
+```cpp
+class base {
+public:
+    virtual auto say_hi() -> void {
+        // ...
+    }
+};
+
+class derived : public base {
+public:
+    // the final keyword indicates that no class which inherits from derived will
+    // also override this function, and a compile error will be generated if
+    // one attempts to do so
+    auto say_hi() -> void final override {
+        // ...
+    }
+};
+
+// even though obj could refer to objects of a class which inherit from derived,
+// they won't override say_hi by finality, so we can do static binding here rather
+// than dynamic binding, which eliminates the performance overhead of the vtable
+auto do_something(derived& obj) {
+    obj.say_hi();
+}
+```
+
+Finality can also be applied to classes themselves, preventing other classes deriving from it:
+
+```cpp
+class base final {
+    // ...
+};
+
+// this produces an error at compile time now
+class derived : public base {
+    // ...
+};
+```
+
+### Pure virtual functions and abstract classes
+
+A virtual function is considered to be *pure virtual* if it has no corresponding implementation in that class:
+
+```cpp
+class base {
+public:
+    // the pure specifier "= 0" indicates that this base class virtual function
+    // doesn't come with an implementation of say_hi,
+    // so in effect this just acts as an interface
+    virtual auto say_hi() -> void = 0;
+
+    virtual auto say_bye() -> void {
+        std::cout << "Bye!\n";
+    };
+};
+
+class derived : public base {
+public:
+    auto say_hi() -> void override {
+        // we now have to implement it in any derived classes
+        // it's non-pure virtual, so behaves as normal
+    }
+};
+
+class intermediate : public base {
+public:
+    // we can also have pure virtual overrides of non-pure virtual functions
+    // anything which derives from intermediate must implement say_bye
+    auto say_bye() -> void override = 0;
+};
+```
+
+If a class has one or more pure virtual functions, then objects of that class *cannot* be constructed. Moreover, functions cannot accept or return objects of such a class type by value, only by reference.
+
+Pure virtual functions allow us to mimic the behaviour of *abstract classes* from other OOP languages.
 
 ---
 
