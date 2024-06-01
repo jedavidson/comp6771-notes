@@ -1,6 +1,6 @@
 # COMP6771 Lecture Notes
 
-*These notes sometimes include small technical asides and additions that are not strictly part of COMP6771. You can view these as a concise summary of the lectures that also provide some interesting extensions on the material covered in them.*
+*These notes sometimes include small technical asides and additions that are not strictly part of COMP6771. They also don't cover all of the content (e.g. testing using `catch2`). You can view these as a concise summary of most of the lecture material that also provide some interesting additional commentary on them.*
 
 ## C++ Basics
 
@@ -545,7 +545,7 @@ auto x = 6771;
 
 It's customary to not indent the namespace block itself, but its contents have its own indentation.
 
-Can be nested, but we prefer top-level namespaces to multi-tier:
+They can be nested, but we prefer top-level namespaces to multi-tier:
 
 ```cpp
 namespace x {
@@ -562,7 +562,7 @@ auto z = 6771;
 } // namespace x::y
 ```
 
-Can have anonymous namespaces, which can be used to simulate the effect of `static` functions in C. These are local to the file in which they are defined:
+They can be anonymous (i.e. unnamed), which can be used to simulate the effect of `static` functions in C. These are local to the file in which they are defined:
 
 ```cpp
 namespace {
@@ -574,9 +574,33 @@ auto f(int x) -> int {
 // refer to the functions in such a namespace just using their names
 ```
 
-Can give namespaces new names, e.g. `namespace chrono = std::chrono;`.
+We can give namespaces new names, e.g. `namespace chrono = std::chrono;`.
 
-We always fully-qualify things to avoid counterintuitive behaviour with overloading resolution.
+We always fully-qualify things (e.g. STL containers) to avoid counterintuitive behaviour with overloading resolution. This means that `using` directives such as `using namespace std;` are frowned upon.
+
+#### Aside
+
+In addition to namespace aliases, another alternative to shortening long types are type aliases:
+
+```cpp
+// type aliases can be local to a scope (e.g. a function or class),
+// or global for a file (including files which #include it)
+using map_of_maps = std::unordered_map<int, std::unordered_map<int, int>>;
+```
+
+There are some instances where `using` directives *do* make sense:
+
+```cpp
+auto print_time_fact() -> void {
+    // this using directive is local only to the block scope of print_time_fact,
+    // and it's appropriate to do this here, because time literals would be very,
+    // very painful to use otherwise
+    using namespace std::chrono_literals;
+    std::cout << "There are "
+              << std::chrono::seconds(6771m).count()
+              << " seconds in 6771 minutes\n";
+}
+```
 
 ### OOP in C++
 
