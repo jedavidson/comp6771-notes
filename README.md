@@ -1985,6 +1985,10 @@ auto s = stack<int, std::vector<int>>{};
 <!-- TODO: fix this -->
 <!-- One thing to note here is that the compiler will only consider primary class templates while looking for a match for the template template parameter. A consequence is that partially-specialised templates ... -->
 
+### Extension: SFINAE
+
+TODO: substitution failure is not an error
+
 ### Template argument deduction
 
 The process by which the compiler determines what the types of type parameters and values of non-type parameters should be from the function arguments being used with them.
@@ -2017,7 +2021,7 @@ std::vector{1, 2, 3};
 ```
 each element is of type `int`. This is called *implicit deduction.* But specifying the type (as in *explicit deduction*) can be used to leave the compiler in no doubt as to what the template values should be.
 
-### CRTP
+### Extension: CRTP
 
 TODO: the curiously recurring template pattern
 
