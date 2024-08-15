@@ -1082,7 +1082,7 @@ class person {
 Because the default behaviour of a copy constructor is to perform member-wise shallow copies of data members, any pointer resources (e.g. heap arrays) will refer to the same object in both object copies (i.e. changes in one object to this data member reflect in the other). Even worse, during destruction, such resources will be double-freed. So, when writing a copy constructor, make sure to do deep copies:
 
 ```cpp
-my_vec::operator=(my_vec const& mv)
+my_vec::my_vec(mv_vec const& mv)
 : data_{new int[mv.size_]}
 , size_{mv.size_}
 {
@@ -1095,7 +1095,7 @@ my_vec::operator=(my_vec const& mv)
 The copy-and-swap idiom is most useful for implementing copy assignment correctly:
 
 ```cpp
-my_vec::my_vec(mv_vec const& mv) {
+my_vec::operator=(my_vec const& mv) {
     // use the copy constructor to create a copy of the object,
     // then swap out its internals with this object
     my_vec(mv).swap(*this);
@@ -1564,7 +1564,7 @@ private:
 
 Initialisation of the base subobject within a derived class object cannot be done within the derived class, even for protected members.
 
-TODO: 6:56
+TODO: finish this
 
 ### Polymorphism and destruction
 
