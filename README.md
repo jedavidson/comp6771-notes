@@ -49,9 +49,11 @@ const int * const p; // p is a constant pointer to a constant int
 
 `const` also has benefits in terms of allowing some compiler optimisations, and in multithreaded situations (`const` objects are a lot easier to use in a concurrent setting).
 
+<!--
 ### Logical operators in C++20
 
 We can use Python-style `and`, `or`, `not` in place of `&&`, `||` and `!` in the most recent version of C++. Where possible, use these.
+-->
 
 ### Value semantics
 
@@ -2190,3 +2192,11 @@ auto make_unique(Ts&&... args) -> std::unique_ptr<T> {
 By doing this, value categories are preserved even though the arguments to `make_unique` may be a mix of lvalues and rvalues. This is called *perfect forwarding.*
 
 You should use `std::forward` when you want to wrap functions with a parameterised type, which you might want to do for a few reasons (e.g. doing something special before/after the function call).
+
+---
+
+## Possible extension topics
+
+- The `<ranges>` library, a modern approach to collections
+- Compile-time assurances via `concept`
+- Concurrency in C++
